@@ -25,16 +25,7 @@ class StreamSink[T]:
             yield item
 
 
-class SCityName:
-    city_name: StreamSink
-    country: StreamSink
-
-    def __init__(self):
-        self.city_name = StreamSink()
-        self.country = StreamSink()
-
-
-class StreamingJSONSplitter:
+class JMux[T]:
     escape_map = {
         '"': '"',
         "\\": "\\",
@@ -46,9 +37,10 @@ class StreamingJSONSplitter:
         "t": "\t",
     }
 
-    def __init__(self, model: SCityName):
-        self.model: SCityName = model
+    def __init__(self, model: T):
+        self.model: T = model
         self.state_stack: List[str] = []
+        self.buffer: str = ""
         self.current_key: Optional[str] = None
         self.current_sink: Optional[StreamSink] = None
         self.string_escape = False

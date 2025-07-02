@@ -3,7 +3,7 @@ from asyncio import gather
 from typing import List
 
 import pytest
-from jmux.json_demux import SCityName, StreamingJSONSplitter
+from jmux.json_demux import JMux, StreamSink
 
 
 class AsyncStreamGenerator:
@@ -204,10 +204,18 @@ class AsyncStreamGenerator:
     ],
 )
 @pytest.mark.anyio
-async def test_json_demux(stream: str, expected_operations: List[str]):
+async def test_json_demux__simple_json(stream: str, expected_operations: List[str]):
+    class SCityName:
+        city_name: StreamSink
+        country: StreamSink
+
+        def __init__(self):
+            self.city_name = StreamSink()
+            self.country = StreamSink()
+
     llm_stream = AsyncStreamGenerator(stream)
     sCity = SCityName()
-    splitter = StreamingJSONSplitter(sCity)
+    splitter = JMux(sCity)
 
     city_name = ""
     country = ""
@@ -245,4 +253,107 @@ async def test_json_demux(stream: str, expected_operations: List[str]):
     assert city_name == "Paris"
     assert country == "France"
 
+    assert operation_list == expected_operations
+
+
+@pytest.mark.parametrize(
+    "stream,expected_operations",
+    [
+        (
+            '{"emojis":"😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍😘🥰😗😙😚"}',
+            [
+                "[producer] sending: {",
+                '[producer] sending: "',
+                "[producer] sending: e",
+                "[producer] sending: m",
+                "[producer] sending: o",
+                "[producer] sending: j",
+                "[producer] sending: i",
+                "[producer] sending: s",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                '[producer] sending: "',
+                "[producer] sending: 😀",
+                "[emojis] received: 😀",
+                "[producer] sending: 😃",
+                "[emojis] received: 😃",
+                "[producer] sending: 😄",
+                "[emojis] received: 😄",
+                "[producer] sending: 😁",
+                "[emojis] received: 😁",
+                "[producer] sending: 😆",
+                "[emojis] received: 😆",
+                "[producer] sending: 😅",
+                "[emojis] received: 😅",
+                "[producer] sending: 😂",
+                "[emojis] received: 😂",
+                "[producer] sending: 🤣",
+                "[emojis] received: 🤣",
+                "[producer] sending: 😊",
+                "[emojis] received: 😊",
+                "[producer] sending: 😇",
+                "[emojis] received: 😇",
+                "[producer] sending: 🙂",
+                "[emojis] received: 🙂",
+                "[producer] sending: 🙃",
+                "[emojis] received: 🙃",
+                "[producer] sending: 😉",
+                "[emojis] received: 😉",
+                "[producer] sending: 😌",
+                "[emojis] received: 😌",
+                "[producer] sending: 😍",
+                "[emojis] received: 😍",
+                "[producer] sending: 😘",
+                "[emojis] received: 😘",
+                "[producer] sending: 🥰",
+                "[emojis] received: 🥰",
+                "[producer] sending: 😗",
+                "[emojis] received: 😗",
+                "[producer] sending: 😙",
+                "[emojis] received: 😙",
+                "[producer] sending: 😚",
+                "[emojis] received: 😚",
+                '[producer] sending: "',
+                "[producer] sending: }",
+            ],
+        )
+    ],
+)
+@pytest.mark.anyio
+async def test_json_demux__utf8(stream: str, expected_operations: List[str]):
+    class SEmojis:
+        emojis: StreamSink
+
+        def __init__(self):
+            self.emojis = StreamSink()
+
+    llm_stream = AsyncStreamGenerator(stream)
+    sEmoji = SEmojis()
+    splitter = JMux(sEmoji)
+
+    emojis = ""
+    operation_list = []
+
+    async def consume_emojis():
+        nonlocal emojis
+        async for ch in sEmoji.emojis:
+            op = f"[emojis] received: {ch}"
+            operation_list.append(op)
+            emojis += ch
+
+    async def produce():
+        async for ch in llm_stream:
+            op = f"[producer] sending: {ch}"
+            operation_list.append(op)
+            await splitter.feed_char(ch)
+            # Yield control to allow other tasks to run
+            # Necessary in the tests only, for API calls this is not needed
+            await asyncio.sleep(0)
+
+    await gather(
+        produce(),
+        consume_emojis(),
+    )
+
+    assert emojis == "😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍😘🥰😗😙😚"
     assert operation_list == expected_operations
