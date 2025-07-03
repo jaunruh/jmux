@@ -206,17 +206,12 @@ class AsyncStreamGenerator:
 )
 @pytest.mark.anyio
 async def test_json_demux__simple_json(stream: str, expected_operations: List[str]):
-    class SCityName:
-        city_name: StreamableValues
-        country: StreamableValues
-
-        def __init__(self):
-            self.city_name = StreamableValues()
-            self.country = StreamableValues()
+    class SCityName(JMux):
+        city_name: StreamableValues[str]
+        country: StreamableValues[str]
 
     llm_stream = AsyncStreamGenerator(stream)
     s_city = SCityName()
-    splitter = JMux(s_city)
 
     city_name = ""
     country = ""
@@ -240,7 +235,7 @@ async def test_json_demux__simple_json(stream: str, expected_operations: List[st
         async for ch in llm_stream:
             op = f"[producer] sending: {ch}"
             operation_list.append(op)
-            await splitter.feed_char(ch)
+            await s_city.feed_char(ch)
             # Yield control to allow other tasks to run
             # Necessary in the tests only, for API calls this is not needed
             await asyncio.sleep(0)
@@ -324,15 +319,15 @@ async def test_json_demux__simple_json(stream: str, expected_operations: List[st
 )
 @pytest.mark.anyio
 async def test_json_demux__utf8(stream: str, expected_operations: List[str]):
-    class SEmojis:
-        emojis: StreamableValues
-
-        def __init__(self):
-            self.emojis = StreamableValues()
+    class SEmojis(JMux):
+        emojis: StreamableValues[str]
 
     llm_stream = AsyncStreamGenerator(stream)
     s_emoji = SEmojis()
-    splitter = JMux(s_emoji)
+
+    s_emoji_class = SEmojis
+
+    print(f"Class type: {type(s_emoji_class)}")
 
     emojis = ""
     operation_list = []
@@ -348,7 +343,7 @@ async def test_json_demux__utf8(stream: str, expected_operations: List[str]):
         async for ch in llm_stream:
             op = f"[producer] sending: {ch}"
             operation_list.append(op)
-            await splitter.feed_char(ch)
+            await s_emoji.feed_char(ch)
             # Yield control to allow other tasks to run
             # Necessary in the tests only, for API calls this is not needed
             await asyncio.sleep(0)
@@ -439,15 +434,14 @@ async def test_json_demux__utf8(stream: str, expected_operations: List[str]):
 )
 @pytest.mark.anyio
 async def test_json_demux__primitves(stream: str, expected_operations: List[str]):
-    class SPrimitives:
-        my_int = AwaitableValue[int]()
-        my_float = AwaitableValue[float]()
-        my_bool = AwaitableValue[bool]()
-        my_none = AwaitableValue[None]()
+    class SPrimitives(JMux):
+        my_int: AwaitableValue[int]
+        my_float: AwaitableValue[float]
+        my_bool: AwaitableValue[bool]
+        my_none: AwaitableValue[None]
 
     llm_stream = AsyncStreamGenerator(stream)
     s_primitives = SPrimitives()
-    splitter = JMux(s_primitives)
 
     my_int: Optional[int] = None
     my_float: Optional[float] = None
@@ -483,7 +477,7 @@ async def test_json_demux__primitves(stream: str, expected_operations: List[str]
         async for ch in llm_stream:
             op = f"[producer] sending: {ch}"
             operation_list.append(op)
-            await splitter.feed_char(ch)
+            await s_primitives.feed_char(ch)
             # Yield control to allow other tasks to run
             # Necessary in the tests only, for API calls this is not needed
             await asyncio.sleep(0)

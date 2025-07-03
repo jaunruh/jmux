@@ -1,5 +1,16 @@
+from abc import ABC
 from asyncio import Event, Queue
-from typing import AsyncGenerator, List, Literal, Optional, Protocol, cast
+from typing import (
+    AsyncGenerator,
+    List,
+    Literal,
+    Optional,
+    Protocol,
+    cast,
+    get_origin,
+    get_type_hints,
+    runtime_checkable,
+)
 
 
 class StreamableValues[T]:
@@ -50,6 +61,7 @@ class AwaitableValue[T]:
         return cast(T, self._value)
 
 
+@runtime_checkable
 class IAsyncSink(Protocol):
     async def put(self, item):
         """Put an item into the sink."""
@@ -70,10 +82,10 @@ type State = Literal[
 ]
 
 
-class JMux[T]:
+class JMux(ABC):
     escape_map = {
         '"': '"',
-        "\\": "\\",
+        "\\": "\\\\",
         "/": "/",
         "b": "\b",
         "f": "\f",
@@ -82,21 +94,22 @@ class JMux[T]:
         "t": "\t",
     }
 
-    def __init__(self, model: T):
-        self.model: T = model
+    def __init__(self):
+        self._instantiate_attributes()
         self.state_stack: List[State] = []
         self.buffer: str = ""
         self.current_key: Optional[str] = None
         self.current_sink: Optional[IAsyncSink] = None
         self.string_escape = False
 
-    async def feed_char(self, ch):
+    async def feed_char(self, ch) -> None:
         state = self.state_stack[-1] if self.state_stack else None
 
         if state == "expecting_key":
             if ch == '"':
                 self.state_stack.append("parsing_key")
                 self.buffer = ""
+
         elif state == "parsing_key":
             if self.string_escape:
                 self.buffer += self._unescape(ch)
@@ -122,7 +135,7 @@ class JMux[T]:
                 self.state_stack.append("streaming_string")
                 if not self.current_key:
                     raise ValueError("Current key is not set before streaming string.")
-                self.current_sink = getattr(self.model, self.current_key)
+                self.current_sink = self._ensure_attribute(self.current_key)
                 self.string_escape = False
             elif ch in "0123456789-tfn":
                 self.state_stack.pop()
@@ -131,7 +144,7 @@ class JMux[T]:
                     raise ValueError(
                         "Current key is not set before expecting primitive."
                     )
-                self.current_sink = getattr(self.model, self.current_key)
+                self.current_sink = self._ensure_attribute(self.current_key)
                 self.buffer = ch
 
         elif state == "expecting_primitive":
@@ -174,11 +187,27 @@ class JMux[T]:
         elif ch == "{":
             self.state_stack.append("expecting_key")
 
-    async def _emit(self, ch):
+    def _instantiate_attributes(self) -> None:
+        type_hints = get_type_hints(self.__class__)
+        for attr_name, type_alias in type_hints.items():
+            TargetType = get_origin(type_alias)
+            if not issubclass(TargetType, IAsyncSink):
+                raise TypeError(
+                    f"Attribute '{attr_name}' must conform to protocol IAsyncSink, got {TargetType}."
+                )
+            target_instance = TargetType()
+            setattr(self, attr_name, target_instance)
+
+    def _ensure_attribute(self, attr_name: str) -> IAsyncSink:
+        if not hasattr(self, attr_name):
+            raise AttributeError(f"Attribute '{attr_name}' is not defined in JMux.")
+        return getattr(self, attr_name)
+
+    async def _emit(self, ch) -> None:
         if self.current_sink:
             await self.current_sink.put(ch)
 
-    async def _close_sink(self):
+    async def _close_sink(self) -> None:
         if self.current_sink:
             await self.current_sink.close()
         self.current_sink = None
