@@ -6,6 +6,7 @@ from typing import (
     Literal,
     Optional,
     Protocol,
+    Sequence,
     cast,
     get_origin,
     get_type_hints,
@@ -13,7 +14,7 @@ from typing import (
 )
 
 
-class StreamableValues[T]:
+class StreamableValues[T: Sequence]:
     def __init__(self):
         self._queue = Queue()
         self._closed = False
