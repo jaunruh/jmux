@@ -1,9 +1,10 @@
 import asyncio
+import json
 from asyncio import gather
-from typing import List
+from typing import List, Optional
 
 import pytest
-from jmux.json_demux import JMux, StreamSink
+from jmux.json_demux import AwaitableValue, JMux, StreamableValues
 
 
 class AsyncStreamGenerator:
@@ -206,16 +207,16 @@ class AsyncStreamGenerator:
 @pytest.mark.anyio
 async def test_json_demux__simple_json(stream: str, expected_operations: List[str]):
     class SCityName:
-        city_name: StreamSink
-        country: StreamSink
+        city_name: StreamableValues
+        country: StreamableValues
 
         def __init__(self):
-            self.city_name = StreamSink()
-            self.country = StreamSink()
+            self.city_name = StreamableValues()
+            self.country = StreamableValues()
 
     llm_stream = AsyncStreamGenerator(stream)
-    sCity = SCityName()
-    splitter = JMux(sCity)
+    s_city = SCityName()
+    splitter = JMux(s_city)
 
     city_name = ""
     country = ""
@@ -223,14 +224,14 @@ async def test_json_demux__simple_json(stream: str, expected_operations: List[st
 
     async def consume_city():
         nonlocal city_name
-        async for ch in sCity.city_name:
+        async for ch in s_city.city_name:
             op = f"[city] received: {ch}"
             operation_list.append(op)
             city_name += ch
 
     async def consume_country():
         nonlocal country
-        async for ch in sCity.country:
+        async for ch in s_city.country:
             op = f"[country] received: {ch}"
             operation_list.append(op)
             country += ch
@@ -250,8 +251,10 @@ async def test_json_demux__simple_json(stream: str, expected_operations: List[st
         consume_country(),
     )
 
-    assert city_name == "Paris"
-    assert country == "France"
+    parsed_json = json.loads(stream)
+
+    assert parsed_json["city_name"] == city_name
+    assert parsed_json["country"] == country
 
     assert operation_list == expected_operations
 
@@ -322,21 +325,21 @@ async def test_json_demux__simple_json(stream: str, expected_operations: List[st
 @pytest.mark.anyio
 async def test_json_demux__utf8(stream: str, expected_operations: List[str]):
     class SEmojis:
-        emojis: StreamSink
+        emojis: StreamableValues
 
         def __init__(self):
-            self.emojis = StreamSink()
+            self.emojis = StreamableValues()
 
     llm_stream = AsyncStreamGenerator(stream)
-    sEmoji = SEmojis()
-    splitter = JMux(sEmoji)
+    s_emoji = SEmojis()
+    splitter = JMux(s_emoji)
 
     emojis = ""
     operation_list = []
 
     async def consume_emojis():
         nonlocal emojis
-        async for ch in sEmoji.emojis:
+        async for ch in s_emoji.emojis:
             op = f"[emojis] received: {ch}"
             operation_list.append(op)
             emojis += ch
@@ -355,5 +358,148 @@ async def test_json_demux__utf8(stream: str, expected_operations: List[str]):
         consume_emojis(),
     )
 
-    assert emojis == "😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍😘🥰😗😙😚"
+    parsed_json = json.loads(stream)
+
+    assert emojis == parsed_json["emojis"]
+    assert operation_list == expected_operations
+
+
+@pytest.mark.parametrize(
+    "stream,expected_operations",
+    [
+        (
+            '{"my_int":42,"my_float":3.14,"my_bool":true,"my_none":null}',
+            [
+                "[producer] sending: {",
+                '[producer] sending: "',
+                "[producer] sending: m",
+                "[producer] sending: y",
+                "[producer] sending: _",
+                "[producer] sending: i",
+                "[producer] sending: n",
+                "[producer] sending: t",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                "[producer] sending: 4",
+                "[producer] sending: 2",
+                "[producer] sending: ,",
+                "[int] received: 42",
+                '[producer] sending: "',
+                "[producer] sending: m",
+                "[producer] sending: y",
+                "[producer] sending: _",
+                "[producer] sending: f",
+                "[producer] sending: l",
+                "[producer] sending: o",
+                "[producer] sending: a",
+                "[producer] sending: t",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                "[producer] sending: 3",
+                "[producer] sending: .",
+                "[producer] sending: 1",
+                "[producer] sending: 4",
+                "[producer] sending: ,",
+                "[float] received: 3.14",
+                '[producer] sending: "',
+                "[producer] sending: m",
+                "[producer] sending: y",
+                "[producer] sending: _",
+                "[producer] sending: b",
+                "[producer] sending: o",
+                "[producer] sending: o",
+                "[producer] sending: l",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                "[producer] sending: t",
+                "[producer] sending: r",
+                "[producer] sending: u",
+                "[producer] sending: e",
+                "[producer] sending: ,",
+                "[bool] received: True",
+                '[producer] sending: "',
+                "[producer] sending: m",
+                "[producer] sending: y",
+                "[producer] sending: _",
+                "[producer] sending: n",
+                "[producer] sending: o",
+                "[producer] sending: n",
+                "[producer] sending: e",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                "[producer] sending: n",
+                "[producer] sending: u",
+                "[producer] sending: l",
+                "[producer] sending: l",
+                "[producer] sending: }",
+                "[none] received: None",
+            ],
+        )
+    ],
+)
+@pytest.mark.anyio
+async def test_json_demux__primitves(stream: str, expected_operations: List[str]):
+    class SPrimitives:
+        my_int = AwaitableValue[int]()
+        my_float = AwaitableValue[float]()
+        my_bool = AwaitableValue[bool]()
+        my_none = AwaitableValue[None]()
+
+    llm_stream = AsyncStreamGenerator(stream)
+    s_primitives = SPrimitives()
+    splitter = JMux(s_primitives)
+
+    my_int: Optional[int] = None
+    my_float: Optional[float] = None
+    my_bool: Optional[bool] = None
+    my_none: Optional[None] = None
+    operation_list = []
+
+    async def consume_int():
+        nonlocal my_int
+        my_int = await s_primitives.my_int
+        op = f"[int] received: {my_int}"
+        operation_list.append(op)
+
+    async def consume_float():
+        nonlocal my_float
+        my_float = await s_primitives.my_float
+        op = f"[float] received: {my_float}"
+        operation_list.append(op)
+
+    async def consume_bool():
+        nonlocal my_bool
+        my_bool = await s_primitives.my_bool
+        op = f"[bool] received: {my_bool}"
+        operation_list.append(op)
+
+    async def consume_none():
+        nonlocal my_none
+        my_none = await s_primitives.my_none
+        op = f"[none] received: {my_none}"
+        operation_list.append(op)
+
+    async def produce():
+        async for ch in llm_stream:
+            op = f"[producer] sending: {ch}"
+            operation_list.append(op)
+            await splitter.feed_char(ch)
+            # Yield control to allow other tasks to run
+            # Necessary in the tests only, for API calls this is not needed
+            await asyncio.sleep(0)
+
+    await gather(
+        produce(),
+        consume_int(),
+        consume_float(),
+        consume_bool(),
+        consume_none(),
+    )
+
+    parsed_json = json.loads(stream)
+
+    assert my_int == parsed_json["my_int"]
+    assert my_float == parsed_json["my_float"]
+    assert my_bool == parsed_json["my_bool"]
+    assert my_none == parsed_json["my_none"]
     assert operation_list == expected_operations

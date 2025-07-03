@@ -1,8 +1,8 @@
-from asyncio import Queue
-from typing import AsyncGenerator, List, Optional
+from asyncio import Event, Queue
+from typing import AsyncGenerator, List, Literal, Optional, Protocol, cast
 
 
-class StreamSink[T]:
+class StreamableValues[T]:
     def __init__(self):
         self._queue = Queue()
         self._closed = False
@@ -25,6 +25,51 @@ class StreamSink[T]:
             yield item
 
 
+class AwaitableValue[T]:
+    def __init__(self):
+        self._was_set = False
+        self._event = Event()
+        self._value: T | None = None
+
+    async def put(self, value: T):
+        self._was_set = True
+        self._value = value
+        self._event.set()
+
+    async def close(self):
+        # noop
+        pass
+
+    def __await__(self):
+        return self._wait().__await__()
+
+    async def _wait(self) -> T:
+        await self._event.wait()
+        if self._value is None and not self._was_set:
+            raise ValueError("No value has been put into the sink.")
+        return cast(T, self._value)
+
+
+class IAsyncSink(Protocol):
+    async def put(self, item):
+        """Put an item into the sink."""
+        ...
+
+    async def close(self):
+        """Close the sink."""
+        ...
+
+
+type State = Literal[
+    "expecting_key",
+    "parsing_key",
+    "expecting_colon",
+    "expecting_value",
+    "expecting_primitive",  # number, true, false, null
+    "streaming_string",
+]
+
+
 class JMux[T]:
     escape_map = {
         '"': '"',
@@ -39,10 +84,10 @@ class JMux[T]:
 
     def __init__(self, model: T):
         self.model: T = model
-        self.state_stack: List[str] = []
+        self.state_stack: List[State] = []
         self.buffer: str = ""
         self.current_key: Optional[str] = None
-        self.current_sink: Optional[StreamSink] = None
+        self.current_sink: Optional[IAsyncSink] = None
         self.string_escape = False
 
     async def feed_char(self, ch):
@@ -79,6 +124,40 @@ class JMux[T]:
                     raise ValueError("Current key is not set before streaming string.")
                 self.current_sink = getattr(self.model, self.current_key)
                 self.string_escape = False
+            elif ch in "0123456789-tfn":
+                self.state_stack.pop()
+                self.state_stack.append("expecting_primitive")
+                if not self.current_key:
+                    raise ValueError(
+                        "Current key is not set before expecting primitive."
+                    )
+                self.current_sink = getattr(self.model, self.current_key)
+                self.buffer = ch
+
+        elif state == "expecting_primitive":
+            if ch not in ",}":
+                self.buffer += ch
+            else:
+                self.state_stack.pop()
+                if self.buffer == "null":
+                    await self._emit(None)
+                elif self.buffer == "true":
+                    await self._emit(True)
+                elif self.buffer == "false":
+                    await self._emit(False)
+                else:
+                    try:
+                        value = (
+                            float(self.buffer)
+                            if "." in self.buffer
+                            else int(self.buffer)
+                        )
+                        await self._emit(value)
+                    except ValueError as e:
+                        raise ValueError(
+                            f"Invalid primitive value: {self.buffer}"
+                        ) from e
+                self.buffer = ""
 
         elif state == "streaming_string":
             if self.string_escape:
