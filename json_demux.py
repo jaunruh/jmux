@@ -37,7 +37,7 @@ class StreamableValues[T: Sequence]:
             yield item
 
 
-class AwaitableValue[T]:
+class AwaitableValue[T: int | float | str | bool | None | JMux]:
     def __init__(self):
         self._was_set = False
         self._event = Event()
@@ -181,9 +181,19 @@ class JMux(ABC):
                 self.string_escape = True
             elif ch == '"':
                 self.state_stack.pop()
+                if isinstance(self.current_sink, AwaitableValue):
+                    await self.current_sink.put(self.buffer)
+                    self.buffer = ""
                 await self._close_sink()
             else:
-                await self._emit(ch)
+                if isinstance(self.current_sink, StreamableValues):
+                    await self._emit(ch)
+                elif isinstance(self.current_sink, AwaitableValue):
+                    self.buffer += ch
+                else:
+                    raise TypeError(
+                        f"Current sink {self.current_sink} does not support streaming."
+                    )
 
         elif ch == "{":
             self.state_stack.append("expecting_key")
