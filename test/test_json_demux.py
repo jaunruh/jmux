@@ -445,7 +445,7 @@ async def test_json_demux__utf8(stream: str, expected_operations: List[str]):
     ],
 )
 @pytest.mark.anyio
-async def test_json_demux__primitves(stream: str, expected_operations: List[str]):
+async def test_json_demux__primitives(stream: str, expected_operations: List[str]):
     class SPrimitives(JMux):
         my_str: AwaitableValue[str]
         my_int: AwaitableValue[int]
@@ -518,4 +518,96 @@ async def test_json_demux__primitves(stream: str, expected_operations: List[str]
     assert my_float == parsed_json["my_float"]
     assert my_bool == parsed_json["my_bool"]
     assert my_none == parsed_json["my_none"]
-    # assert operation_list == expected_operations
+    assert operation_list == expected_operations
+
+
+@pytest.mark.parametrize(
+    "stream,expected_operations",
+    [
+        (
+            '{"nested":{"child":"child_value"}}',
+            [
+                "[producer] sending: {",
+                '[producer] sending: "',
+                "[producer] sending: n",
+                "[producer] sending: e",
+                "[producer] sending: s",
+                "[producer] sending: t",
+                "[producer] sending: e",
+                "[producer] sending: d",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                "[producer] sending: {",
+                "[nested] received: <SNestedChild>",
+                '[producer] sending: "',
+                "[producer] sending: c",
+                "[producer] sending: h",
+                "[producer] sending: i",
+                "[producer] sending: l",
+                "[producer] sending: d",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                '[producer] sending: "',
+                "[producer] sending: c",
+                "[producer] sending: h",
+                "[producer] sending: i",
+                "[producer] sending: l",
+                "[producer] sending: d",
+                "[producer] sending: _",
+                "[producer] sending: v",
+                "[producer] sending: a",
+                "[producer] sending: l",
+                "[producer] sending: u",
+                "[producer] sending: e",
+                '[producer] sending: "',
+                "[child] received: child_value",
+                "[producer] sending: }",
+                "[producer] sending: }",
+            ],
+        )
+    ],
+)
+@pytest.mark.anyio
+async def test_json_demux__nested(stream: str, expected_operations: List[str]):
+    class SNestedParent(JMux):
+        class SNestedChild(JMux):
+            child: AwaitableValue[str]
+
+        nested: AwaitableValue[SNestedChild]
+
+    llm_stream = AsyncStreamGenerator(stream)
+    s_nested = SNestedParent()
+
+    nested: Optional[SNestedParent.SNestedChild] = None
+    child: Optional[str] = None
+    operation_list = []
+
+    async def consume_nested():
+        nonlocal nested, child
+        nested = await s_nested.nested
+        op = "[nested] received: <SNestedChild>"
+        operation_list.append(op)
+
+        child = await nested.child
+        op = f"[child] received: {child}"
+        operation_list.append(op)
+
+    async def produce():
+        async for ch in llm_stream:
+            op = f"[producer] sending: {ch}"
+            operation_list.append(op)
+            await s_nested.feed_char(ch)
+            # Yield control to allow other tasks to run
+            # Necessary in the tests only, for API calls this is not needed
+            await asyncio.sleep(0)
+
+    await gather(
+        produce(),
+        consume_nested(),
+    )
+
+    parsed_json = json.loads(stream)
+    assert nested is not None
+    assert isinstance(nested, SNestedParent.SNestedChild)
+    assert child == parsed_json["nested"]["child"]
+    assert operation_list == expected_operations
