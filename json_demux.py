@@ -6,7 +6,6 @@ from typing import (
     Literal,
     Optional,
     Protocol,
-    Sequence,
     Type,
     cast,
     get_args,
@@ -15,35 +14,51 @@ from typing import (
     runtime_checkable,
 )
 
+type Primitive = int | float | str | bool | None
+type Emittable = Primitive | "JMux"
+type SinkType = Literal["StreamableValues", "AwaitableValue"]
+
 
 class UnderlyingGenericMixin[T]:
-    def underlying_generic(self) -> Type[T]:
+    def get_underlying_generic(self) -> Type[T]:
         # `__orig_class__` is only set after the `__init__` method is called
         if not hasattr(self, "__orig_class__"):
             raise TypeError(
                 "AwaitableValue must be initialized with a defined generic type."
             )
 
-        origin = getattr(self, "__orig_class__")
-        if len(origin.__args__) != 1:
+        Origin = getattr(self, "__orig_class__")
+        if len(Origin.__args__) != 1:
             raise TypeError(
-                f"AwaitableValue must be initialized with a single generic type, got {origin.__args__}."
+                f"AwaitableValue must be initialized with a single generic type, got {Origin.__args__}."
             )
-        generic: Type[T] = origin.__args__[0]
-        return generic
+        Generic: Type[T] = Origin.__args__[0]
+        return Generic
 
 
-class StreamableValues[T: Sequence](UnderlyingGenericMixin[T]):
+class StreamableValues[T: Emittable](UnderlyingGenericMixin[T]):
     def __init__(self):
         self._queue = Queue[T | None]()
+        self._last_item: T | None = None
         self._closed = False
 
-    async def put(self, item):
+    async def put(self, item: T):
+        if self._closed:
+            raise ValueError("Cannot put item into a closed sink.")
+        self._last_item = item
         await self._queue.put(item)
 
     async def close(self):
         self._closed = True
         await self._queue.put(None)
+
+    def get_current(self) -> T:
+        if self._last_item is None:
+            raise ValueError("StreamableValues has not received any items yet.")
+        return self._last_item
+
+    def get_sink_type(self) -> SinkType:
+        return "StreamableValues"
 
     def __aiter__(self):
         return self._stream()
@@ -58,39 +73,47 @@ class StreamableValues[T: Sequence](UnderlyingGenericMixin[T]):
             yield item
 
 
-class AwaitableValue[T: int | float | str | bool | None | JMux](
-    UnderlyingGenericMixin[T]
-):
+class AwaitableValue[T: Emittable](UnderlyingGenericMixin[T]):
     def __init__(self):
-        self._was_set = False
+        self._value_set = False
         self._event = Event()
         self._value: T | None = None
 
     async def put(self, value: T):
+        if self._value:
+            raise ValueError("AwaitableValue can only be set once.")
+        self._value_set = True
         self._value = value
         self._event.set()
 
     async def close(self):
-        self._was_set = True
         pass
+
+    def get_current(self) -> T:
+        if not self._value:
+            raise ValueError("AwaitableValue has not been set yet.")
+        return self._value
+
+    def get_sink_type(self) -> SinkType:
+        return "AwaitableValue"
 
     def __await__(self):
         return self._wait().__await__()
 
     async def _wait(self) -> T:
         await self._event.wait()
-        if self._value is None and not self._was_set:
+        if self._value is None and not self._value_set:
             raise ValueError("No value has been put into the sink.")
         return cast(T, self._value)
 
 
 @runtime_checkable
-class IAsyncSink(Protocol):
-    def underlying_generic(self) -> Type:
+class IAsyncSink[T: Emittable](Protocol):
+    def get_underlying_generic(self) -> Type[T]:
         """Return the underlying generic type of the sink."""
         ...
 
-    async def put(self, item):
+    async def put(self, item: T):
         """Put an item into the sink."""
         ...
 
@@ -98,39 +121,170 @@ class IAsyncSink(Protocol):
         """Close the sink."""
         ...
 
+    def get_current(self) -> T:
+        """Get the current value from the sink."""
+        ...
+
+    def get_sink_type(self) -> SinkType:
+        """Get the type of the sink."""
+        ...
+
 
 type State = Literal[
-    "expecting_key",
+    "start",
+    "end",
+    "error",
+    # expect
+    "expect_key",
+    "expect_colon",
+    "expect_value",
+    "expect_comma_or_eoc",
+    # parsing
     "parsing_key",
-    "expecting_colon",
-    "expecting_value",
-    "expecting_primitive",  # number, true, false, null
-    "streaming_string",
+    "parsing_string",
+    "parsing_primitive",
     "parsing_object",
 ]
 
+type Mode = Literal[
+    "$",
+    "object",
+    "array",
+]
+
+escape_map = {
+    '"': '"',
+    "\\": "\\\\",
+    "/": "/",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+}
+
+
+class Pda:
+    def __init__(self):
+        self._stack: List[Mode] = []
+        self._state: State = "start"
+
+    @property
+    def state(self) -> State:
+        return self._state
+
+    @property
+    def top(self) -> Mode | None:
+        if not self._stack:
+            return None
+        return self._stack[-1]
+
+    def set_state(self, new_state: State) -> None:
+        self._state = new_state
+
+    def push(self, mode: Mode) -> None:
+        self._stack.append(mode)
+
+    def pop(self) -> Mode:
+        if not self._stack:
+            raise IndexError("PDA stack is empty.")
+        return self._stack.pop()
+
+
+class TextBuffer:
+    def __init__(self):
+        self._buffer = ""
+        self._string_escape = False
+
+    def push(self, ch: str) -> None:
+        if self._string_escape:
+            self._buffer += escape_map.get(ch, ch)
+            self._string_escape = False
+        elif ch == "\\":
+            self._string_escape = True
+        else:
+            self._buffer += ch
+
+    def is_terminating_quote(self, ch: str) -> bool:
+        if self._string_escape:
+            return False
+        if ch == '"':
+            return True
+        return False
+
+    def reset(self) -> None:
+        self._buffer = ""
+        self._string_escape = False
+
+    @property
+    def buffer(self) -> str:
+        return self._buffer
+
+
+class Sink[T: Emittable]:
+    def __init__(self, delegate: "JMux"):
+        self._current_key: Optional[str] = None
+        self._current_sink: Optional[IAsyncSink[T]] = None
+        self._delegate: "JMux" = delegate
+
+    @property
+    def current_sink_type(self) -> SinkType:
+        if self._current_sink is None:
+            raise ValueError("No current sink is set.")
+        return self._current_sink.get_sink_type()
+
+    def set_current(self, attr_name: str) -> None:
+        if not hasattr(self._delegate, attr_name):
+            raise AttributeError(
+                f"Attribute '{attr_name}' is not defined in JMux {self._delegate.__class__.__name__}."
+            )
+        sink: IAsyncSink = getattr(self._delegate, attr_name)
+        if not isinstance(sink, IAsyncSink):
+            raise TypeError(
+                f"Attribute '{attr_name}' must conform to protocol IAsyncSink, got {type(sink)}."
+            )
+        self._current_key = attr_name
+        self._current_sink = sink
+
+    async def emit(self, val: T) -> None:
+        if self._current_sink is None:
+            raise ValueError("No current sink is set.")
+        await self._current_sink.put(val)
+
+    async def close(self) -> None:
+        if self._current_sink is None:
+            raise ValueError("No current sink is set.")
+        await self._current_sink.close()
+
+    async def create_and_emit_nested(self) -> None:
+        if self._current_sink is None:
+            raise ValueError("No current sink is set.")
+        NestedJmux = self._current_sink.get_underlying_generic()
+        if not issubclass(NestedJmux, JMux):
+            raise TypeError(
+                f"Cannot emit nested JMux, current sink {self._current_sink} must be a subclass of JMux."
+            )
+        nested = NestedJmux()
+        await self.emit(nested)
+
+    async def forward_char(self, ch: str) -> None:
+        if self._current_sink is None:
+            raise ValueError("No current sink is set.")
+        maybe_jmux = self._current_sink.get_current()
+        if not isinstance(maybe_jmux, JMux):
+            raise TypeError(
+                f"Current sink {self._current_sink} must be a JMux instance to forward characters."
+            )
+        await maybe_jmux.feed_char(ch)
+
 
 class JMux(ABC):
-    escape_map = {
-        '"': '"',
-        "\\": "\\\\",
-        "/": "/",
-        "b": "\b",
-        "f": "\f",
-        "n": "\n",
-        "r": "\r",
-        "t": "\t",
-    }
-
     def __init__(self):
         self._instantiate_attributes()
-        self.state_stack: List[State] = []
-        self.buffer: str = ""
-        self.child_object: Optional["JMux"] = None
-        self.current_key: Optional[str] = None
-        self.current_sink: Optional[IAsyncSink] = None
-        self.string_escape = False
-        self.curly_brace_depth = 0
+        self._history: List[str] = []
+        self.pda: Pda = Pda()
+        self.text_parser: TextBuffer = TextBuffer()
+        self.sink = Sink(self)
 
     def _instantiate_attributes(self) -> None:
         type_hints = get_type_hints(self.__class__)
@@ -147,160 +301,178 @@ class JMux(ABC):
                 )
             setattr(self, attr_name, target_instance)
 
-    @property
-    def state(self) -> Optional[State]:
-        return self.state_stack[-1] if self.state_stack else None
+    async def feed_char(self, ch: str) -> None:
+        self._history.append(ch)
 
-    async def feed_char(self, ch) -> None:
-        if self.state == "expecting_key":
+        if self.pda.state == "start" and ch != "{":
+            raise ValueError("JSON must start with '{' character.")
+
+        if self.pda.state == "start" and ch == "{":
+            self.pda.push("$")
+            self.pda.set_state("expect_key")
+            return
+
+        if self.pda.state == "expect_value":
             if ch == '"':
-                self.state_stack.append("parsing_key")
-                self.buffer = ""
+                self.pda.set_state("parsing_string")
+                self.text_parser.reset()
+                return
+            if ch in "0123456789-tfn":
+                self.pda.set_state("parsing_primitive")
+                self.text_parser.push(ch)
+                return
 
-        elif self.state == "parsing_key":
-            if self.string_escape:
-                self.buffer += self._unescape(ch)
-                self.string_escape = False
-            elif ch == "\\":
-                self.string_escape = True
-            elif ch == '"':
-                self.current_key = self.buffer
-                self.buffer = ""
-                self.state_stack.pop()
-                self.state_stack.append("expecting_colon")
+        if self.pda.state == "parsing_string":
+            if self.text_parser.is_terminating_quote(ch):
+                if self.sink.current_sink_type == "AwaitableValue":
+                    await self.sink.emit(self.text_parser.buffer)
+                self.text_parser.reset()
+                await self.sink.close()
+                self.pda.set_state("expect_comma_or_eoc")
+                return
             else:
-                self.buffer += ch
+                self.text_parser.push(ch)
+                if self.sink.current_sink_type == "StreamableValues":
+                    await self.sink.emit(ch)
+                return
 
-        elif self.state == "expecting_colon":
-            if ch == ":":
-                self.state_stack.pop()
-                self.state_stack.append("expecting_value")
+        # CONTEXT: Root
+        if self.pda.top == "$":
+            if self.pda.state == "expect_comma_or_eoc":
+                if ch == ",":
+                    self.pda.set_state("expect_key")
+                    return
+                if ch == "}":
+                    await self.sink.close()
+                    self.pda.pop()
+                    self.pda.set_state("end")
+                    return
 
-        elif self.state == "expecting_value":
-            if ch == '"':
-                self.state_stack.pop()
-                self.state_stack.append("streaming_string")
-                if not self.current_key:
-                    raise ValueError("Current key is not set before streaming string.")
-                self.current_sink = self._ensure_attribute(self.current_key)
-                self.string_escape = False
-            elif ch in "0123456789-tfn":
-                self.state_stack.pop()
-                self.state_stack.append("expecting_primitive")
-                if not self.current_key:
-                    raise ValueError(
-                        "Current key is not set before expecting primitive."
-                    )
-                self.current_sink = self._ensure_attribute(self.current_key)
-                self.buffer = ch
-            elif ch == "{":
-                self.state_stack.append("parsing_object")
-                if not self.current_key:
-                    raise ValueError("Current key is not set before parsing object.")
-                self.current_sink = self._ensure_attribute(self.current_key)
+            if self.pda.state == "expect_key" and ch == '"':
+                self.pda.set_state("parsing_key")
+                self.text_parser.reset()
+                return
 
-                NestedJmux = self.current_sink.underlying_generic()
-                if not issubclass(NestedJmux, JMux):
-                    raise TypeError(
-                        f"Current sink {self.current_sink} must be a subclass of JMux."
-                    )
-                self.child_object = NestedJmux()
-                await self._emit(self.child_object)
-                self.curly_brace_depth = 1
-                await self._close_sink()
-                await self._feed_to_child(ch)
-
-        elif self.state == "expecting_primitive":
-            if ch not in ",}":
-                self.buffer += ch
-            else:
-                self.state_stack.pop()
-                if self.buffer == "null":
-                    await self._emit(None)
-                elif self.buffer == "true":
-                    await self._emit(True)
-                elif self.buffer == "false":
-                    await self._emit(False)
+            if self.pda.state == "parsing_key":
+                if self.text_parser.is_terminating_quote(ch):
+                    self.sink.set_current(self.text_parser.buffer)
+                    self.text_parser.reset()
+                    self.pda.set_state("expect_colon")
+                    return
                 else:
-                    try:
-                        value = (
-                            float(self.buffer)
-                            if "." in self.buffer
-                            else int(self.buffer)
-                        )
-                        await self._emit(value)
-                    except ValueError as e:
-                        raise ValueError(
-                            f"Invalid primitive value: {self.buffer}"
-                        ) from e
-                self.buffer = ""
-                await self._close_sink()
+                    self.text_parser.push(ch)
+                    return
 
-        elif self.state == "streaming_string":
-            if self.string_escape:
-                await self._emit(self._unescape(ch))
-                self.string_escape = False
-            elif ch == "\\":
-                self.string_escape = True
-            elif ch == '"':
-                self.state_stack.pop()
-                if isinstance(self.current_sink, AwaitableValue):
-                    await self.current_sink.put(self.buffer)
-                    self.buffer = ""
-                await self._close_sink()
-            else:
-                if isinstance(self.current_sink, StreamableValues):
-                    await self._emit(ch)
-                elif isinstance(self.current_sink, AwaitableValue):
-                    self.buffer += ch
+            if self.pda.state == "parsing_primitive":
+                if ch not in ",}":
+                    self.text_parser.push(ch)
+                    return
                 else:
-                    raise TypeError(
-                        f"Current sink {self.current_sink} does not support streaming."
-                    )
+                    if self.text_parser.buffer == "null":
+                        await self.sink.emit(None)
+                    elif self.text_parser.buffer == "true":
+                        await self.sink.emit(True)
+                    elif self.text_parser.buffer == "false":
+                        await self.sink.emit(False)
 
-        elif self.state == "parsing_object":
-            await self._feed_to_child(ch)
-            if ch == "{":
-                self.curly_brace_depth += 1
-            elif ch == "}":
-                self.curly_brace_depth -= 1
-                if self.curly_brace_depth == 0:
-                    self.child_object = None
-                    await self._close_sink()
-                    self.state_stack.pop()
-                    self.state_stack.append("expecting_key")
+                    else:
+                        try:
+                            buffer = self.text_parser.buffer
+                            value = float(buffer) if "." in buffer else int(buffer)
+                            await self.sink.emit(value)
 
-        elif ch == "{":
-            self.state_stack.append("expecting_key")
+                        except ValueError as e:
+                            raise ValueError(
+                                f"Invalid primitive value: {buffer}"
+                            ) from e
+                    await self.sink.close()
+                    self.text_parser.reset()
+                    self.pda.set_state("expect_key")
+                    return
 
-        elif ch == "}":
-            if self.state_stack and self.state_stack[-1] == "parsing_object":
-                self.curly_brace_depth -= 1
-                if self.curly_brace_depth == 0:
-                    self.child_object = None
-                    await self._close_sink()
-                    self.state_stack.pop()
+            if self.pda.state == "expect_colon" and ch == ":":
+                self.pda.set_state("expect_value")
+                return
+
+            if self.pda.state == "expect_value":
+                if ch == "{":
+                    await self.sink.create_and_emit_nested()
+                    await self.sink.forward_char(ch)
+                    self.pda.set_state("parsing_object")
+                    self.pda.push("object")
+                    return
+                if ch == "[":
+                    self.pda.set_state("expect_value")
+                    self.pda.push("array")
+                    return
+
+        # CONTEXT: Array
+        if self.pda.top == "array":
+            if self.pda.state == "expect_comma_or_eoc":
+                if ch == ",":
+                    self.pda.set_state("expect_value")
+                    return
+                if ch == "]":
+                    await self.sink.close()
+                    self.pda.pop()
+                    self.pda.set_state("expect_comma_or_eoc")
+                    return
+
+            if self.pda.state == "expect_value":
+                # Most cases are handled above
+                if ch == "{":
+                    await self.sink.create_and_emit_nested()
+                    await self.sink.forward_char(ch)
+                    self.pda.set_state("parsing_object")
+                    self.pda.push("object")
+                    return
+                if ch == "]":
+                    await self.sink.close()
+                    self.pda.pop()
+                    self.pda.set_state("expect_comma_or_eoc")
+                    return
+
+            if self.pda.state == "parsing_primitive":
+                if ch not in ",]":
+                    self.text_parser.push(ch)
+                    return
+                else:
+                    if self.text_parser.buffer == "null":
+                        await self.sink.emit(None)
+                    elif self.text_parser.buffer == "true":
+                        await self.sink.emit(True)
+                    elif self.text_parser.buffer == "false":
+                        await self.sink.emit(False)
+                    else:
+                        try:
+                            buffer = self.text_parser.buffer
+                            value = float(buffer) if "." in buffer else int(buffer)
+                            await self.sink.emit(value)
+                        except ValueError as e:
+                            raise ValueError(
+                                f"Error parsing primitive value, buffer: {buffer}, {e}"
+                            ) from e
+                    self.text_parser.reset()
+                    if ch == ",":
+                        self.pda.set_state("expect_value")
+                    elif ch == "]":
+                        await self.sink.close()
+                        self.pda.pop()
+                        self.pda.set_state("expect_comma_or_eoc")
+                    return
+
+        # CONTEXT: Object
+        if self.pda.top == "object":
+            if self.pda.state != "parsing_object":
+                raise ValueError(
+                    "Cannot feed character to object, current state is not 'parsing_object'."
+                )
+            if ch == "}":
+                self.pda.pop()
+                if self.pda.top == "$":
+                    await self.sink.close()
+                self.pda.set_state("expect_comma_or_eoc")
+                return
             else:
-                raise ValueError("Unexpected '}' character outside of an object.")
-
-    def _ensure_attribute(self, attr_name: str) -> IAsyncSink:
-        if not hasattr(self, attr_name):
-            raise AttributeError(f"Attribute '{attr_name}' is not defined in JMux.")
-        return getattr(self, attr_name)
-
-    async def _emit(self, ch) -> None:
-        if self.current_sink:
-            await self.current_sink.put(ch)
-
-    async def _feed_to_child(self, ch: str) -> None:
-        if not self.child_object:
-            raise ValueError("No child object to feed characters to.")
-        await self.child_object.feed_char(ch)
-
-    async def _close_sink(self) -> None:
-        if self.current_sink:
-            await self.current_sink.close()
-        self.current_sink = None
-
-    def _unescape(self, ch: str) -> str:
-        return self.escape_map.get(ch, ch)
+                await self.sink.forward_char(ch)
+                return

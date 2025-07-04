@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from asyncio import gather
 from typing import List, Optional
 
@@ -19,6 +20,15 @@ class AsyncStreamGenerator:
     async def __aiter__(self):
         for char in self.stream:
             yield char
+            await asyncio.sleep(0)
+
+
+LOG_EMITS = os.environ.get("LOG_EMITS", "0") == "1"
+
+
+def log_emit(message: str):
+    if LOG_EMITS:
+        print(message)
 
 
 @pytest.mark.parametrize(
@@ -221,6 +231,7 @@ async def test_json_demux__simple_json(stream: str, expected_operations: List[st
         nonlocal city_name
         async for ch in s_city.city_name:
             op = f"[city] received: {ch}"
+            log_emit(op)
             operation_list.append(op)
             city_name += ch
 
@@ -228,12 +239,14 @@ async def test_json_demux__simple_json(stream: str, expected_operations: List[st
         nonlocal country
         async for ch in s_city.country:
             op = f"[country] received: {ch}"
+            log_emit(op)
             operation_list.append(op)
             country += ch
 
     async def produce():
         async for ch in llm_stream:
             op = f"[producer] sending: {ch}"
+            log_emit(op)
             operation_list.append(op)
             await s_city.feed_char(ch)
             # Yield control to allow other tasks to run
@@ -467,35 +480,41 @@ async def test_json_demux__primitives(stream: str, expected_operations: List[str
         nonlocal my_str
         my_str = await s_primitives.my_str
         op = f"[str] received: {my_str}"
+        log_emit(op)
         operation_list.append(op)
 
     async def consume_int():
         nonlocal my_int
         my_int = await s_primitives.my_int
         op = f"[int] received: {my_int}"
+        log_emit(op)
         operation_list.append(op)
 
     async def consume_float():
         nonlocal my_float
         my_float = await s_primitives.my_float
         op = f"[float] received: {my_float}"
+        log_emit(op)
         operation_list.append(op)
 
     async def consume_bool():
         nonlocal my_bool
         my_bool = await s_primitives.my_bool
         op = f"[bool] received: {my_bool}"
+        log_emit(op)
         operation_list.append(op)
 
     async def consume_none():
         nonlocal my_none
         my_none = await s_primitives.my_none
         op = f"[none] received: {my_none}"
+        log_emit(op)
         operation_list.append(op)
 
     async def produce():
         async for ch in llm_stream:
             op = f"[producer] sending: {ch}"
+            log_emit(op)
             operation_list.append(op)
             await s_primitives.feed_char(ch)
             # Yield control to allow other tasks to run
@@ -569,34 +588,37 @@ async def test_json_demux__primitives(stream: str, expected_operations: List[str
 )
 @pytest.mark.anyio
 async def test_json_demux__nested(stream: str, expected_operations: List[str]):
-    class SNestedParent(JMux):
-        class SNestedChild(JMux):
+    class SParent(JMux):
+        class SNested(JMux):
             child: AwaitableValue[str]
 
-        nested: AwaitableValue[SNestedChild]
+        nested: AwaitableValue[SNested]
 
     llm_stream = AsyncStreamGenerator(stream)
-    s_nested = SNestedParent()
+    s_parent = SParent()
 
-    nested: Optional[SNestedParent.SNestedChild] = None
+    nested: Optional[SParent.SNested] = None
     child: Optional[str] = None
     operation_list = []
 
     async def consume_nested():
         nonlocal nested, child
-        nested = await s_nested.nested
+        nested = await s_parent.nested
         op = "[nested] received: <SNestedChild>"
+        log_emit(op)
         operation_list.append(op)
 
         child = await nested.child
         op = f"[child] received: {child}"
+        log_emit(op)
         operation_list.append(op)
 
     async def produce():
         async for ch in llm_stream:
             op = f"[producer] sending: {ch}"
+            log_emit(op)
             operation_list.append(op)
-            await s_nested.feed_char(ch)
+            await s_parent.feed_char(ch)
             # Yield control to allow other tasks to run
             # Necessary in the tests only, for API calls this is not needed
             await asyncio.sleep(0)
@@ -608,6 +630,268 @@ async def test_json_demux__nested(stream: str, expected_operations: List[str]):
 
     parsed_json = json.loads(stream)
     assert nested is not None
-    assert isinstance(nested, SNestedParent.SNestedChild)
+    assert isinstance(nested, SParent.SNested)
     assert child == parsed_json["nested"]["child"]
+    assert operation_list == expected_operations
+
+
+@pytest.mark.parametrize(
+    "stream,expected_operations",
+    [
+        (
+            '{"arr":[{"key":"value1"},{"key":"value2"}]}',
+            [
+                "[producer] sending: {",
+                '[producer] sending: "',
+                "[producer] sending: a",
+                "[producer] sending: r",
+                "[producer] sending: r",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                "[producer] sending: [",
+                "[producer] sending: {",
+                "[nested] received: <SArrayElement>",
+                '[producer] sending: "',
+                "[producer] sending: k",
+                "[producer] sending: e",
+                "[producer] sending: y",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                '[producer] sending: "',
+                "[producer] sending: v",
+                "[producer] sending: a",
+                "[producer] sending: l",
+                "[producer] sending: u",
+                "[producer] sending: e",
+                "[producer] sending: 1",
+                '[producer] sending: "',
+                "[child] received: value1",
+                "[producer] sending: }",
+                "[producer] sending: ,",
+                "[producer] sending: {",
+                "[nested] received: <SArrayElement>",
+                '[producer] sending: "',
+                "[producer] sending: k",
+                "[producer] sending: e",
+                "[producer] sending: y",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                '[producer] sending: "',
+                "[producer] sending: v",
+                "[producer] sending: a",
+                "[producer] sending: l",
+                "[producer] sending: u",
+                "[producer] sending: e",
+                "[producer] sending: 2",
+                '[producer] sending: "',
+                "[child] received: value2",
+                "[producer] sending: }",
+                "[producer] sending: ]",
+                "[producer] sending: }",
+            ],
+        )
+    ],
+)
+@pytest.mark.anyio
+async def test_json_demux__object_with_array_of_objects(
+    stream: str, expected_operations: List[str]
+):
+    class SParent(JMux):
+        class SArrayElement(JMux):
+            key: AwaitableValue[str]
+
+        arr: StreamableValues[SArrayElement]
+
+    llm_stream = AsyncStreamGenerator(stream)
+    s_parent = SParent()
+
+    arr: List[SParent.SArrayElement] = []
+    child: List[str] = []
+    operation_list = []
+
+    async def consume_nested():
+        nonlocal arr, child
+        async for element in s_parent.arr:
+            arr.append(element)
+            op = "[nested] received: <SArrayElement>"
+            log_emit(op)
+            operation_list.append(op)
+
+            key_value = await element.key
+            await asyncio.sleep(0)
+            child.append(key_value)
+            op = f"[child] received: {key_value}"
+            log_emit(op)
+            operation_list.append(op)
+
+    async def produce():
+        async for ch in llm_stream:
+            op = f"[producer] sending: {ch}"
+            log_emit(op)
+            operation_list.append(op)
+            await s_parent.feed_char(ch)
+            # Yield control to allow other tasks to run
+            # Necessary in the tests only, for API calls this is not needed
+            await asyncio.sleep(0)
+
+    await gather(
+        produce(),
+        consume_nested(),
+    )
+
+    parsed_json = json.loads(stream)
+    assert arr is not None
+    assert len(arr) == 2
+    assert isinstance(arr[0], SParent.SArrayElement)
+    assert child[0] == parsed_json["arr"][0]["key"]
+    assert operation_list == expected_operations
+
+
+@pytest.mark.parametrize(
+    "stream,expected_operations",
+    [
+        (
+            '{"arr_int":[1,2],"arr_float":[1.1,2.2],"arr_bool":[true,false]}',
+            # '{"arr_int":[1,2]}',
+            # '{"arr_float":[1.1,2.2]}',
+            # '{"arr_bool":[true,false]}',
+            [
+                "[producer] sending: {",
+                '[producer] sending: "',
+                "[producer] sending: a",
+                "[producer] sending: r",
+                "[producer] sending: r",
+                "[producer] sending: _",
+                "[producer] sending: i",
+                "[producer] sending: n",
+                "[producer] sending: t",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                "[producer] sending: [",
+                "[producer] sending: 1",
+                "[producer] sending: ,",
+                "[arr_int] received: 1",
+                "[producer] sending: 2",
+                "[producer] sending: ]",
+                "[arr_int] received: 2",
+                "[producer] sending: ,",
+                '[producer] sending: "',
+                "[producer] sending: a",
+                "[producer] sending: r",
+                "[producer] sending: r",
+                "[producer] sending: _",
+                "[producer] sending: f",
+                "[producer] sending: l",
+                "[producer] sending: o",
+                "[producer] sending: a",
+                "[producer] sending: t",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                "[producer] sending: [",
+                "[producer] sending: 1",
+                "[producer] sending: .",
+                "[producer] sending: 1",
+                "[producer] sending: ,",
+                "[arr_float] received: 1.1",
+                "[producer] sending: 2",
+                "[producer] sending: .",
+                "[producer] sending: 2",
+                "[producer] sending: ]",
+                "[arr_float] received: 2.2",
+                "[producer] sending: ,",
+                '[producer] sending: "',
+                "[producer] sending: a",
+                "[producer] sending: r",
+                "[producer] sending: r",
+                "[producer] sending: _",
+                "[producer] sending: b",
+                "[producer] sending: o",
+                "[producer] sending: o",
+                "[producer] sending: l",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                "[producer] sending: [",
+                "[producer] sending: t",
+                "[producer] sending: r",
+                "[producer] sending: u",
+                "[producer] sending: e",
+                "[producer] sending: ,",
+                "[arr_bool] received: True",
+                "[producer] sending: f",
+                "[producer] sending: a",
+                "[producer] sending: l",
+                "[producer] sending: s",
+                "[producer] sending: e",
+                "[producer] sending: ]",
+                "[arr_bool] received: False",
+                "[producer] sending: }",
+            ],
+        )
+    ],
+)
+@pytest.mark.anyio
+async def test_json_demux__object_with_array_of_primitives(
+    stream: str, expected_operations: List[str]
+):
+    class SParent(JMux):
+        arr_int: StreamableValues[int]
+        arr_float: StreamableValues[float]
+        arr_bool: StreamableValues[bool]
+
+    llm_stream = AsyncStreamGenerator(stream)
+    s_parent = SParent()
+
+    arr_int: List[int] = []
+    arr_float: List[float] = []
+    arr_bool: List[bool] = []
+    operation_list = []
+
+    async def consume_int_arr():
+        nonlocal arr_int
+        async for element in s_parent.arr_int:
+            arr_int.append(element)
+            op = f"[arr_int] received: {element}"
+            print(op)
+            operation_list.append(op)
+
+    async def consume_float_arr():
+        nonlocal arr_float
+        async for element in s_parent.arr_float:
+            arr_float.append(element)
+            op = f"[arr_float] received: {element}"
+            print(op)
+            operation_list.append(op)
+
+    async def consume_bool_arr():
+        nonlocal arr_bool
+        async for element in s_parent.arr_bool:
+            arr_bool.append(element)
+            op = f"[arr_bool] received: {element}"
+            print(op)
+            operation_list.append(op)
+
+    async def produce():
+        async for ch in llm_stream:
+            op = f"[producer] sending: {ch}"
+            print(op)
+            operation_list.append(op)
+            await s_parent.feed_char(ch)
+            # Yield control to allow other tasks to run
+            # Necessary in the tests only, for API calls this is not needed
+            await asyncio.sleep(0)
+
+    await gather(
+        produce(),
+        consume_int_arr(),
+        consume_float_arr(),
+        consume_bool_arr(),
+    )
+
+    parsed_json = json.loads(stream)
+    assert len(arr_int) == 2
+    assert arr_int == parsed_json["arr_int"]
+    assert len(arr_float) == 2
+    assert arr_float == parsed_json["arr_float"]
+    assert len(arr_bool) == 2
+    assert arr_bool == parsed_json["arr_bool"]
     assert operation_list == expected_operations
