@@ -303,7 +303,7 @@ class JMux(ABC):
 
     async def feed_char(self, ch: str) -> None:
         self._history.append(ch)
-        self._assert_character_allowed_in_state(ch)
+        self._assert_state_allowed(ch)
 
         if self.pda.state == "expect_value":
             if ch == '"':
@@ -380,7 +380,6 @@ class JMux(ABC):
                             buffer = self.text_parser.buffer
                             value = float(buffer) if "." in buffer else int(buffer)
                             await self.sink.emit(value)
-
                         except ValueError as e:
                             raise ValueError(
                                 f"Invalid primitive value: {buffer}"
@@ -409,10 +408,6 @@ class JMux(ABC):
         # CONTEXT: Array
         if self.pda.top == "array":
             if self.pda.state == "parsing_string":
-                if self.sink.current_sink_type == "AwaitableValue":
-                    raise ValueError(
-                        "Cannot parse string in an array with AwaitableValue sink type."
-                    )
                 if self.text_parser.is_terminating_quote(ch):
                     await self.sink.emit(self.text_parser.buffer)
                     self.text_parser.reset()
@@ -477,10 +472,6 @@ class JMux(ABC):
 
         # CONTEXT: Object
         if self.pda.top == "object":
-            if self.pda.state != "parsing_object":
-                raise ValueError(
-                    "Cannot feed character to object, current state is not 'parsing_object'."
-                )
             if ch == "}":
                 self.pda.pop()
                 if self.pda.top == "$":
@@ -491,12 +482,26 @@ class JMux(ABC):
                 await self.sink.forward_char(ch)
                 return
 
-    def _assert_character_allowed_in_state(self, ch: str) -> None:
+    def _assert_state_allowed(self, ch: str) -> None:
         if self.pda.state == "start" and ch != "{":
             raise ValueError("JSON must start with '{' character.")
 
         if self.pda.top == "array" and ch == "[":
             raise ValueError("No support for 2-dimensional arrays.")
+
+        if (
+            self.pda.top == "array"
+            and self.pda.state == "parsing_string"
+            and self.sink.current_sink_type == "AwaitableValue"
+        ):
+            raise ValueError(
+                "Cannot parse string in an array with AwaitableValue sink type."
+            )
+
+        if self.pda.top == "object" and self.pda.state != "parsing_object":
+            raise ValueError(
+                f"State in object context must be 'parsing_object', got '{self.pda.state}'."
+            )
 
         if (
             self.pda.state == "expect_comma_or_eoc"
