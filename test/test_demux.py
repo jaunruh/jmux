@@ -5,7 +5,8 @@ from asyncio import gather
 from typing import List, Optional
 
 import pytest
-from jmux.json_demux import AwaitableValue, JMux, StreamableValues
+from jmux.demux import JMux
+from jmux.types import AwaitableValue, StreamableValues
 
 
 class AsyncStreamGenerator:
