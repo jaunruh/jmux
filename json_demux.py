@@ -322,22 +322,22 @@ class JMux(ABC):
                 self.text_parser.push(ch)
                 return
 
-        if self.pda.state == "parsing_string":
-            if self.text_parser.is_terminating_quote(ch):
-                if self.sink.current_sink_type == "AwaitableValue":
-                    await self.sink.emit(self.text_parser.buffer)
-                self.text_parser.reset()
-                await self.sink.close()
-                self.pda.set_state("expect_comma_or_eoc")
-                return
-            else:
-                self.text_parser.push(ch)
-                if self.sink.current_sink_type == "StreamableValues":
-                    await self.sink.emit(ch)
-                return
-
         # CONTEXT: Root
         if self.pda.top == "$":
+            if self.pda.state == "parsing_string":
+                if self.text_parser.is_terminating_quote(ch):
+                    if self.sink.current_sink_type == "AwaitableValue":
+                        await self.sink.emit(self.text_parser.buffer)
+                    self.text_parser.reset()
+                    await self.sink.close()
+                    self.pda.set_state("expect_comma_or_eoc")
+                    return
+                else:
+                    self.text_parser.push(ch)
+                    if self.sink.current_sink_type == "StreamableValues":
+                        await self.sink.emit(ch)
+                    return
+
             if self.pda.state == "expect_comma_or_eoc":
                 if ch == ",":
                     self.pda.set_state("expect_key")
@@ -408,6 +408,20 @@ class JMux(ABC):
 
         # CONTEXT: Array
         if self.pda.top == "array":
+            if self.pda.state == "parsing_string":
+                if self.sink.current_sink_type == "AwaitableValue":
+                    raise ValueError(
+                        "Cannot parse string in an array with AwaitableValue sink type."
+                    )
+                if self.text_parser.is_terminating_quote(ch):
+                    await self.sink.emit(self.text_parser.buffer)
+                    self.text_parser.reset()
+                    self.pda.set_state("expect_comma_or_eoc")
+                    return
+                else:
+                    self.text_parser.push(ch)
+                    return
+
             if self.pda.state == "expect_comma_or_eoc":
                 if ch == ",":
                     self.pda.set_state("expect_value")

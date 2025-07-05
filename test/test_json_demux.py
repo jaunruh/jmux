@@ -751,7 +751,8 @@ async def test_json_demux__object_with_array_of_objects(
     "stream,expected_operations",
     [
         (
-            '{"arr_int":[1,2],"arr_float":[1.1,2.2],"arr_bool":[true,false]}',
+            # '{"arr_int":[1,2],"arr_float":[1.1,2.2],"arr_bool":[true,false]}',
+            '{"arr_int":[1,2],"arr_float":[1.1,2.2],"arr_bool":[true,false],"arr_str":["ab","cd"]}',
             # '{"arr_int":[1,2]}',
             # '{"arr_float":[1.1,2.2]}',
             # '{"arr_bool":[true,false]}',
@@ -824,6 +825,30 @@ async def test_json_demux__object_with_array_of_objects(
                 "[producer] sending: e",
                 "[producer] sending: ]",
                 "[arr_bool] received: False",
+                "[producer] sending: ,",
+                '[producer] sending: "',
+                "[producer] sending: a",
+                "[producer] sending: r",
+                "[producer] sending: r",
+                "[producer] sending: _",
+                "[producer] sending: s",
+                "[producer] sending: t",
+                "[producer] sending: r",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                "[producer] sending: [",
+                '[producer] sending: "',
+                "[producer] sending: a",
+                "[producer] sending: b",
+                '[producer] sending: "',
+                "[arr_str] received: ab",
+                "[producer] sending: ,",
+                '[producer] sending: "',
+                "[producer] sending: c",
+                "[producer] sending: d",
+                '[producer] sending: "',
+                "[arr_str] received: cd",
+                "[producer] sending: ]",
                 "[producer] sending: }",
             ],
         )
@@ -837,6 +862,7 @@ async def test_json_demux__object_with_array_of_primitives(
         arr_int: StreamableValues[int]
         arr_float: StreamableValues[float]
         arr_bool: StreamableValues[bool]
+        arr_str: StreamableValues[str]
 
     llm_stream = AsyncStreamGenerator(stream)
     s_parent = SParent()
@@ -844,6 +870,7 @@ async def test_json_demux__object_with_array_of_primitives(
     arr_int: List[int] = []
     arr_float: List[float] = []
     arr_bool: List[bool] = []
+    arr_str: List[str] = []
     operation_list = []
 
     async def consume_int_arr():
@@ -870,6 +897,14 @@ async def test_json_demux__object_with_array_of_primitives(
             print(op)
             operation_list.append(op)
 
+    async def consume_str_arr():
+        nonlocal arr_str
+        async for element in s_parent.arr_str:
+            arr_str.append(element)
+            op = f"[arr_str] received: {element}"
+            print(op)
+            operation_list.append(op)
+
     async def produce():
         async for ch in llm_stream:
             op = f"[producer] sending: {ch}"
@@ -885,6 +920,7 @@ async def test_json_demux__object_with_array_of_primitives(
         consume_int_arr(),
         consume_float_arr(),
         consume_bool_arr(),
+        consume_str_arr(),
     )
 
     parsed_json = json.loads(stream)
@@ -894,4 +930,6 @@ async def test_json_demux__object_with_array_of_primitives(
     assert arr_float == parsed_json["arr_float"]
     assert len(arr_bool) == 2
     assert arr_bool == parsed_json["arr_bool"]
+    assert len(arr_str) == 2
+    assert arr_str == parsed_json["arr_str"]
     assert operation_list == expected_operations
