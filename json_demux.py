@@ -303,14 +303,7 @@ class JMux(ABC):
 
     async def feed_char(self, ch: str) -> None:
         self._history.append(ch)
-
-        if self.pda.state == "start" and ch != "{":
-            raise ValueError("JSON must start with '{' character.")
-
-        if self.pda.state == "start" and ch == "{":
-            self.pda.push("$")
-            self.pda.set_state("expect_key")
-            return
+        self._assert_character_allowed_in_state(ch)
 
         if self.pda.state == "expect_value":
             if ch == '"':
@@ -320,6 +313,13 @@ class JMux(ABC):
             if ch in "0123456789-tfn":
                 self.pda.set_state("parsing_primitive")
                 self.text_parser.push(ch)
+                return
+
+        # CONTEXT: Start
+        if self.pda.top is None:
+            if self.pda.state == "start" and ch == "{":
+                self.pda.push("$")
+                self.pda.set_state("expect_key")
                 return
 
         # CONTEXT: Root
@@ -490,3 +490,22 @@ class JMux(ABC):
             else:
                 await self.sink.forward_char(ch)
                 return
+
+    def _assert_character_allowed_in_state(self, ch: str) -> None:
+        if self.pda.state == "start" and ch != "{":
+            raise ValueError("JSON must start with '{' character.")
+
+        if self.pda.top == "array" and ch == "[":
+            raise ValueError("No support for 2-dimensional arrays.")
+
+        if (
+            self.pda.state == "expect_comma_or_eoc"
+            and not ch.isspace()
+            and ch not in ",}]"
+        ):
+            raise ValueError(
+                f"Expected ',', '}}', ']' or white space in state '{self.pda.state}', got '{ch}'."
+            )
+
+        if self.pda.state == "expect_colon" and not ch.isspace() and ch != ":":
+            raise ValueError(f"Expected ':' in state '{self.pda.state}', got '{ch}'.")
