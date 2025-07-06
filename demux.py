@@ -10,6 +10,7 @@ from typing import (
 
 from jmux.decoder import StringDecoder
 from jmux.error import (
+    EmptyKeyError,
     MissingAttributeError,
     NoCurrentSinkError,
     ParsePrimitiveError,
@@ -17,6 +18,7 @@ from jmux.error import (
     UnexpectedAttributeTypeError,
     UnexpectedCharacterError,
 )
+from jmux.helpers import is_json_whitespace
 from jmux.pda import PushDownAutomata
 from jmux.types import IAsyncSink, SinkType
 
@@ -192,7 +194,10 @@ class JMux(ABC):
 
             if self.pda.state == "parsing_key":
                 if self.decoder.is_terminating_quote(ch):
-                    self.sink.set_current(self.decoder.buffer)
+                    buffer = self.decoder.buffer
+                    if not buffer:
+                        raise EmptyKeyError("Empty key is not allowed in JSON objects.")
+                    self.sink.set_current(buffer)
                     self.decoder.reset()
                     self.pda.set_state("expect_colon")
                     return
@@ -327,50 +332,58 @@ class JMux(ABC):
                 "JSON must start with '{' character.",
             )
 
-        if self.pda.top == "array" and ch == "[":
-            raise UnexpectedCharacterError(
-                ch,
-                self.pda.stack,
-                self.pda.state,
-                "No support for 2-dimensional arrays.",
-            )
+        if not is_json_whitespace(ch):
+            if self.pda.state == "expect_key" and ch != '"':
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Expected '\"' in state '{self.pda.state}', got '{ch}'.",
+                )
 
-        if (
-            self.pda.top == "array"
-            and self.pda.state == "parsing_string"
-            and self.sink.current_sink_type == "AwaitableValue"
-        ):
-            raise UnexpectedCharacterError(
-                ch,
-                self.pda.stack,
-                self.pda.state,
-                "Cannot parse string in an array with AwaitableValue sink type.",
-            )
+            if self.pda.state == "expect_comma_or_eoc" and ch not in ",}]":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Expected ',', '}}', ']' or white space in state '{self.pda.state}', got '{ch}'.",
+                )
 
-        if self.pda.top == "object" and self.pda.state != "parsing_object":
-            raise UnexpectedCharacterError(
-                ch,
-                self.pda.stack,
-                self.pda.state,
-                f"State in object context must be 'parsing_object', got '{self.pda.state}'.",
-            )
+            if self.pda.state == "expect_colon" and ch != ":":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Expected ':' in state '{self.pda.state}', got '{ch}'.",
+                )
 
-        if (
-            self.pda.state == "expect_comma_or_eoc"
-            and not ch.isspace()
-            and ch not in ",}]"
-        ):
-            raise UnexpectedCharacterError(
-                ch,
-                self.pda.stack,
-                self.pda.state,
-                f"Expected ',', '}}', ']' or white space in state '{self.pda.state}', got '{ch}'.",
-            )
+        # CONTEXT: Array
+        if self.pda.top == "array":
+            if ch == "[":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    "No support for 2-dimensional arrays.",
+                )
 
-        if self.pda.state == "expect_colon" and not ch.isspace() and ch != ":":
-            raise UnexpectedCharacterError(
-                ch,
-                self.pda.stack,
-                self.pda.state,
-                f"Expected ':' in state '{self.pda.state}', got '{ch}'.",
-            )
+            if (
+                self.pda.state == "parsing_string"
+                and self.sink.current_sink_type == "AwaitableValue"
+            ):
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    "Cannot parse string in an array with AwaitableValue sink type.",
+                )
+
+        # CONTEXT: Object
+        if self.pda.top == "object":
+            if self.pda.state != "parsing_object":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"State in object context must be 'parsing_object', got '{self.pda.state}'.",
+                )

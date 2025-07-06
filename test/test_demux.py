@@ -2,10 +2,11 @@ import asyncio
 import json
 import os
 from asyncio import gather
-from typing import List, Optional
+from typing import List, Optional, Type
 
 import pytest
 from jmux.demux import JMux, Mode, State
+from jmux.error import EmptyKeyError, MissingAttributeError, UnexpectedCharacterError
 from jmux.types import AwaitableValue, StreamableValues
 
 
@@ -145,6 +146,56 @@ async def test_json_demux__parse_correct_stream__assert_state(
 
     assert s_object.pda.state == expected_state
     assert s_object.pda._stack == expected_stack
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    "stream,maybe_expected_error",
+    [
+        ("b", UnexpectedCharacterError),
+        ("{", None),
+        ("{p", UnexpectedCharacterError),
+        ('{"', None),
+        ('{""', EmptyKeyError),
+        ('{"no_actual_key"', MissingAttributeError),
+        ('{"key_str"', None),
+        ('{"key_str": ""', None),
+        # ('{"key_str": "val","key_int":4p', UnexpectedCharacterError),
+    ],
+)
+# fmt: on
+@pytest.mark.anyio
+async def test_json_demux__parse_incorrect_stream__assert_error(
+    stream: str, maybe_expected_error: Type[Exception] | None
+):
+    class SObject(JMux):
+        class SNested(JMux):
+            key_str: AwaitableValue[str]
+
+        key_str: AwaitableValue[str]
+        key_int: AwaitableValue[int]
+        key_float: AwaitableValue[float]
+        key_bool: AwaitableValue[bool]
+        key_none: AwaitableValue[None]
+        key_stream: StreamableValues[str]
+        key_nested: AwaitableValue[SNested]
+
+        arr_str: StreamableValues[str]
+        arr_int: StreamableValues[int]
+        arr_float: StreamableValues[float]
+        arr_bool: StreamableValues[bool]
+        arr_none: StreamableValues[None]
+        arr_nested: StreamableValues[SNested]
+
+    s_object = SObject()
+
+    if maybe_expected_error:
+        with pytest.raises(maybe_expected_error):
+            for ch in stream:
+                await s_object.feed_char(ch)
+    else:
+        for ch in stream:
+            await s_object.feed_char(ch)
 
 
 @pytest.mark.parametrize(

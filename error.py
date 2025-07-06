@@ -13,6 +13,12 @@ class UnexpectedAttributeTypeError(Exception):
         )
 
 
+class EmptyKeyError(Exception):
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__("Key cannot be empty" + (f": {message}" if message else ""))
+        self.message = message
+
+
 class TypeEmitError(Exception):
     def __init__(self, expected_type: str, actual_type: str) -> None:
         super().__init__(
