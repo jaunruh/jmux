@@ -396,20 +396,23 @@ class JMux(ABC):
         if self.pda.state == "expect_value":
             if is_json_whitespace(ch):
                 return
+
             sink_type = self.sink.current_sink_type
             generic = self.sink.current_underlying_generic
-            if sink_type == "StreamableValues":
+            if sink_type == "StreamableValues" and self.pda.top != "array":
+                if ch in "[":
+                    return
                 if generic is str and ch == '"':
                     return
-                if self.pda.top != "array":
-                    if ch in "[":
-                        return
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Expected '[' or '\"' in state '{self.pda.state}', got '{ch}'.",
-                    )
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Expected '[' or '\"' in state '{self.pda.state}' for  'StreamableValues', got '{ch}'.",
+                )
+            if sink_type == "StreamableValues" and self.pda.top == "array":
+                if ch in "]":
+                    return
 
             if issubclass(generic, JMux) and ch not in "{":
                 raise UnexpectedCharacterError(
@@ -450,6 +453,7 @@ class JMux(ABC):
         if self.pda.state in PRIMITIVE_STATES:
             if ch in ",]}":
                 return
+
             if self.pda.state == "parsing_number":
                 if ch not in "0123456789-+eE.":
                     raise UnexpectedCharacterError(
@@ -476,6 +480,7 @@ class JMux(ABC):
                         self.pda.state,
                         f"Unexpected character '{ch}' in state '{self.pda.state}'.",
                     )
+
             if self.pda.state == "parsing_null":
                 if ch not in "nul":
                     raise UnexpectedCharacterError(

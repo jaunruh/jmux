@@ -212,6 +212,8 @@ async def test_json_demux__parse_correct_stream__assert_state(
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},', None),
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":{', UnexpectedCharacterError),
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":p', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":[[', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":[]', None),
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":[nu', UnexpectedCharacterError),
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["', None),
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1",}', UnexpectedCharacterError),
