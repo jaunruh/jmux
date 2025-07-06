@@ -38,8 +38,16 @@ type State = Literal[
     # parsing
     "parsing_key",
     "parsing_string",
-    "parsing_primitive",
+    "parsing_number",
+    "parsing_boolean",
+    "parsing_null",
     "parsing_object",
+]
+
+PRIMITIVE_STATES: List[State] = [
+    "parsing_number",
+    "parsing_boolean",
+    "parsing_null",
 ]
 
 type Mode = Literal[
@@ -60,6 +68,12 @@ class Sink[T: Emittable]:
         if self._current_sink is None:
             raise NoCurrentSinkError()
         return self._current_sink.get_sink_type()
+
+    @property
+    def current_underlying_generic(self) -> type[T]:
+        if self._current_sink is None:
+            raise NoCurrentSinkError()
+        return self._current_sink.get_underlying_generic()
 
     def set_current(self, attr_name: str) -> None:
         if not hasattr(self._delegate, attr_name):
@@ -149,8 +163,16 @@ class JMux(ABC):
                 self.pda.set_state("parsing_string")
                 self.decoder.reset()
                 return
-            if ch in "0123456789-tfn":
-                self.pda.set_state("parsing_primitive")
+            if ch in "123456789-":
+                self.pda.set_state("parsing_number")
+                self.decoder.push(ch)
+                return
+            if ch in "tf":
+                self.pda.set_state("parsing_boolean")
+                self.decoder.push(ch)
+                return
+            if ch in "n":
+                self.pda.set_state("parsing_null")
                 self.decoder.push(ch)
                 return
 
@@ -205,21 +227,28 @@ class JMux(ABC):
                     self.decoder.push(ch)
                     return
 
-            if self.pda.state == "parsing_primitive":
+            if self.pda.state in PRIMITIVE_STATES:
                 if ch not in ",}":
                     self.decoder.push(ch)
                     return
                 else:
-                    if self.decoder.buffer == "null":
+                    if self.pda.state == "parsing_null":
+                        if not self.decoder.buffer == "null":
+                            raise ParsePrimitiveError(
+                                f"Expected 'null', got '{self.decoder.buffer}'"
+                            )
                         await self.sink.emit(None)
-                    elif self.decoder.buffer == "true":
-                        await self.sink.emit(True)
-                    elif self.decoder.buffer == "false":
-                        await self.sink.emit(False)
+                    elif self.pda.state == "parsing_boolean":
+                        await self.sink.emit(self.decoder.buffer == "true")
                     else:
                         try:
                             buffer = self.decoder.buffer
-                            value = float(buffer) if "." in buffer else int(buffer)
+                            generic = self.sink.current_underlying_generic
+                            value = (
+                                float(buffer)
+                                if issubclass(generic, float)
+                                else int(buffer)
+                            )
                         except ValueError as e:
                             raise ParsePrimitiveError(
                                 f"Buffer: {buffer}; Error: {e}"
@@ -282,21 +311,28 @@ class JMux(ABC):
                     self.pda.set_state("expect_comma_or_eoc")
                     return
 
-            if self.pda.state == "parsing_primitive":
+            if self.pda.state in PRIMITIVE_STATES:
                 if ch not in ",]":
                     self.decoder.push(ch)
                     return
                 else:
-                    if self.decoder.buffer == "null":
+                    if self.pda.state == "parsing_null":
+                        if not self.decoder.buffer == "null":
+                            raise ParsePrimitiveError(
+                                f"Expected 'null', got '{self.decoder.buffer}'"
+                            )
                         await self.sink.emit(None)
-                    elif self.decoder.buffer == "true":
-                        await self.sink.emit(True)
-                    elif self.decoder.buffer == "false":
-                        await self.sink.emit(False)
+                    elif self.pda.state == "parsing_boolean":
+                        await self.sink.emit(self.decoder.buffer == "true")
                     else:
                         try:
                             buffer = self.decoder.buffer
-                            value = float(buffer) if "." in buffer else int(buffer)
+                            generic = self.sink.current_underlying_generic
+                            value = (
+                                float(buffer)
+                                if issubclass(generic, float)
+                                else int(buffer)
+                            )
                         except ValueError as e:
                             raise ParsePrimitiveError(
                                 f"Buffer: {buffer}; Error: {e}"
@@ -356,6 +392,98 @@ class JMux(ABC):
                     self.pda.state,
                     f"Expected ':' in state '{self.pda.state}', got '{ch}'.",
                 )
+
+        if self.pda.state == "expect_value":
+            if is_json_whitespace(ch):
+                return
+            sink_type = self.sink.current_sink_type
+            generic = self.sink.current_underlying_generic
+            if sink_type == "StreamableValues":
+                if generic is str and ch in '"[':
+                    return
+                if ch in "[":
+                    return
+
+            if issubclass(generic, JMux) and ch not in "{":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Expected '{generic.__name__}' to start with '{{' or '[', got '{ch}'.",
+                )
+            if generic is str and ch not in '"':
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Expected string value to start with '\"', got '{ch}'.",
+                )
+            if generic is bool and ch not in "tf":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Expected boolean value to start with 't' or 'f', got '{ch}'.",
+                )
+            if (generic is int or generic is float) and ch not in "123456789-":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Expected integer value to start with '1-9' or '-', got '{ch}'.",
+                )
+            if generic is type(None) and ch not in "n":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Expected 'null' value to start with 'n', got '{ch}'.",
+                )
+
+        if self.pda.state in PRIMITIVE_STATES:
+            if ch in ",]}":
+                return
+            if self.pda.state == "parsing_number":
+                if ch not in "0123456789-+eE.":
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                    )
+            if self.pda.state == "parsing_boolean":
+                if ch not in "truefals":
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                    )
+                if not (
+                    "true".startswith(f"{self.decoder.buffer}{ch}")
+                    or "false".startswith(f"{self.decoder.buffer}{ch}")
+                ):
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                    )
+            if self.pda.state == "parsing_null":
+                if ch not in "nul":
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                    )
+                if not "null".startswith(f"{self.decoder.buffer}{ch}"):
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                    )
 
         # CONTEXT: Array
         if self.pda.top == "array":
