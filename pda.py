@@ -11,6 +11,10 @@ class PushDownAutomata[Context, State]:
         return self._state
 
     @property
+    def stack(self) -> List[Context]:
+        return self._stack
+
+    @property
     def top(self) -> Context | None:
         if not self._stack:
             return None

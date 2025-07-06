@@ -9,6 +9,14 @@ from typing import (
 )
 
 from jmux.decoder import StringDecoder
+from jmux.error import (
+    MissingAttributeError,
+    NoCurrentSinkError,
+    ParsePrimitiveError,
+    TypeEmitError,
+    UnexpectedAttributeTypeError,
+    UnexpectedCharacterError,
+)
 from jmux.pda import PushDownAutomata
 from jmux.types import IAsyncSink, SinkType
 
@@ -48,50 +56,61 @@ class Sink[T: Emittable]:
     @property
     def current_sink_type(self) -> SinkType:
         if self._current_sink is None:
-            raise ValueError("No current sink is set.")
+            raise NoCurrentSinkError()
         return self._current_sink.get_sink_type()
 
     def set_current(self, attr_name: str) -> None:
         if not hasattr(self._delegate, attr_name):
-            raise AttributeError(
-                f"Attribute '{attr_name}' is not defined in JMux {self._delegate.__class__.__name__}."
+            raise MissingAttributeError(
+                object_name=self._delegate.__class__.__name__,
+                attribute=attr_name,
             )
-        sink: IAsyncSink = getattr(self._delegate, attr_name)
+        sink = getattr(self._delegate, attr_name)
         if not isinstance(sink, IAsyncSink):
-            raise TypeError(
-                f"Attribute '{attr_name}' must conform to protocol IAsyncSink, got {type(sink)}."
+            raise UnexpectedAttributeTypeError(
+                attribute=attr_name,
+                object_name=type(sink).__name__,
+                expected_type="IAsyncSink",
             )
         self._current_key = attr_name
         self._current_sink = sink
 
     async def emit(self, val: T) -> None:
         if self._current_sink is None:
-            raise ValueError("No current sink is set.")
+            raise NoCurrentSinkError()
+        underlying_generic = self._current_sink.get_underlying_generic()
+        if not isinstance(val, underlying_generic):
+            raise TypeEmitError(
+                expected_type=f"{underlying_generic.__name__}",
+                actual_type=f"{type(val).__name__}",
+            )
         await self._current_sink.put(val)
 
     async def close(self) -> None:
         if self._current_sink is None:
-            raise ValueError("No current sink is set.")
+            raise NoCurrentSinkError()
         await self._current_sink.close()
 
     async def create_and_emit_nested(self) -> None:
         if self._current_sink is None:
-            raise ValueError("No current sink is set.")
+            raise NoCurrentSinkError()
         NestedJmux = self._current_sink.get_underlying_generic()
         if not issubclass(NestedJmux, JMux):
-            raise TypeError(
-                f"Cannot emit nested JMux, current sink {self._current_sink} must be a subclass of JMux."
+            raise TypeEmitError(
+                expected_type="JMux",
+                actual_type=f"{NestedJmux.__name__}",
             )
         nested = NestedJmux()
         await self.emit(nested)
 
     async def forward_char(self, ch: str) -> None:
         if self._current_sink is None:
-            raise ValueError("No current sink is set.")
+            raise NoCurrentSinkError()
         maybe_jmux = self._current_sink.get_current()
         if not isinstance(maybe_jmux, JMux):
-            raise TypeError(
-                f"Current sink {self._current_sink} must be a JMux instance to forward characters."
+            raise TypeEmitError(
+                expected_type="JMux",
+                actual_type=f"{type(maybe_jmux).__name__}",
             )
         await maybe_jmux.feed_char(ch)
 
@@ -100,7 +119,7 @@ class JMux(ABC):
     def __init__(self):
         self._instantiate_attributes()
         self._history: List[str] = []
-        self.pda: PushDownAutomata = PushDownAutomata[Mode, State]("start")
+        self.pda: PushDownAutomata[Mode, State] = PushDownAutomata[Mode, State]("start")
         self.decoder: StringDecoder = StringDecoder()
         self.sink = Sink[Emittable](self)
 
@@ -192,16 +211,15 @@ class JMux(ABC):
                         await self.sink.emit(True)
                     elif self.decoder.buffer == "false":
                         await self.sink.emit(False)
-
                     else:
                         try:
                             buffer = self.decoder.buffer
                             value = float(buffer) if "." in buffer else int(buffer)
-                            await self.sink.emit(value)
                         except ValueError as e:
-                            raise ValueError(
-                                f"Invalid primitive value: {buffer}"
+                            raise ParsePrimitiveError(
+                                f"Buffer: {buffer}; Error: {e}"
                             ) from e
+                        await self.sink.emit(value)
                     await self.sink.close()
                     self.decoder.reset()
                     self.pda.set_state("expect_key")
@@ -274,11 +292,11 @@ class JMux(ABC):
                         try:
                             buffer = self.decoder.buffer
                             value = float(buffer) if "." in buffer else int(buffer)
-                            await self.sink.emit(value)
                         except ValueError as e:
-                            raise ValueError(
-                                f"Error parsing primitive value, buffer: {buffer}, {e}"
+                            raise ParsePrimitiveError(
+                                f"Buffer: {buffer}; Error: {e}"
                             ) from e
+                        await self.sink.emit(value)
                     self.decoder.reset()
                     if ch == ",":
                         self.pda.set_state("expect_value")
@@ -302,23 +320,39 @@ class JMux(ABC):
 
     def _assert_state_allowed(self, ch: str) -> None:
         if self.pda.state == "start" and ch != "{":
-            raise ValueError("JSON must start with '{' character.")
+            raise UnexpectedCharacterError(
+                ch,
+                self.pda.stack,
+                self.pda.state,
+                "JSON must start with '{' character.",
+            )
 
         if self.pda.top == "array" and ch == "[":
-            raise ValueError("No support for 2-dimensional arrays.")
+            raise UnexpectedCharacterError(
+                ch,
+                self.pda.stack,
+                self.pda.state,
+                "No support for 2-dimensional arrays.",
+            )
 
         if (
             self.pda.top == "array"
             and self.pda.state == "parsing_string"
             and self.sink.current_sink_type == "AwaitableValue"
         ):
-            raise ValueError(
-                "Cannot parse string in an array with AwaitableValue sink type."
+            raise UnexpectedCharacterError(
+                ch,
+                self.pda.stack,
+                self.pda.state,
+                "Cannot parse string in an array with AwaitableValue sink type.",
             )
 
         if self.pda.top == "object" and self.pda.state != "parsing_object":
-            raise ValueError(
-                f"State in object context must be 'parsing_object', got '{self.pda.state}'."
+            raise UnexpectedCharacterError(
+                ch,
+                self.pda.stack,
+                self.pda.state,
+                f"State in object context must be 'parsing_object', got '{self.pda.state}'.",
             )
 
         if (
@@ -326,9 +360,17 @@ class JMux(ABC):
             and not ch.isspace()
             and ch not in ",}]"
         ):
-            raise ValueError(
-                f"Expected ',', '}}', ']' or white space in state '{self.pda.state}', got '{ch}'."
+            raise UnexpectedCharacterError(
+                ch,
+                self.pda.stack,
+                self.pda.state,
+                f"Expected ',', '}}', ']' or white space in state '{self.pda.state}', got '{ch}'.",
             )
 
         if self.pda.state == "expect_colon" and not ch.isspace() and ch != ":":
-            raise ValueError(f"Expected ':' in state '{self.pda.state}', got '{ch}'.")
+            raise UnexpectedCharacterError(
+                ch,
+                self.pda.stack,
+                self.pda.state,
+                f"Expected ':' in state '{self.pda.state}', got '{ch}'.",
+            )
