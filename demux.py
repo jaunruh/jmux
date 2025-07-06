@@ -399,10 +399,17 @@ class JMux(ABC):
             sink_type = self.sink.current_sink_type
             generic = self.sink.current_underlying_generic
             if sink_type == "StreamableValues":
-                if generic is str and ch in '"[':
+                if generic is str and ch == '"':
                     return
-                if ch in "[":
-                    return
+                if self.pda.top != "array":
+                    if ch in "[":
+                        return
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Expected '[' or '\"' in state '{self.pda.state}', got '{ch}'.",
+                    )
 
             if issubclass(generic, JMux) and ch not in "{":
                 raise UnexpectedCharacterError(
