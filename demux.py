@@ -101,7 +101,7 @@ class JMux(ABC):
         self._instantiate_attributes()
         self._history: List[str] = []
         self.pda: PushDownAutomata = PushDownAutomata[Mode, State]("start")
-        self.text_parser: StringDecoder = StringDecoder()
+        self.decoder: StringDecoder = StringDecoder()
         self.sink = Sink[Emittable](self)
 
     def _instantiate_attributes(self) -> None:
@@ -126,11 +126,11 @@ class JMux(ABC):
         if self.pda.state == "expect_value":
             if ch == '"':
                 self.pda.set_state("parsing_string")
-                self.text_parser.reset()
+                self.decoder.reset()
                 return
             if ch in "0123456789-tfn":
                 self.pda.set_state("parsing_primitive")
-                self.text_parser.push(ch)
+                self.decoder.push(ch)
                 return
 
         # CONTEXT: Start
@@ -143,15 +143,15 @@ class JMux(ABC):
         # CONTEXT: Root
         if self.pda.top == "$":
             if self.pda.state == "parsing_string":
-                if self.text_parser.is_terminating_quote(ch):
+                if self.decoder.is_terminating_quote(ch):
                     if self.sink.current_sink_type == "AwaitableValue":
-                        await self.sink.emit(self.text_parser.buffer)
-                    self.text_parser.reset()
+                        await self.sink.emit(self.decoder.buffer)
+                    self.decoder.reset()
                     await self.sink.close()
                     self.pda.set_state("expect_comma_or_eoc")
                     return
                 else:
-                    self.text_parser.push(ch)
+                    self.decoder.push(ch)
                     if self.sink.current_sink_type == "StreamableValues":
                         await self.sink.emit(ch)
                     return
@@ -168,34 +168,34 @@ class JMux(ABC):
 
             if self.pda.state == "expect_key" and ch == '"':
                 self.pda.set_state("parsing_key")
-                self.text_parser.reset()
+                self.decoder.reset()
                 return
 
             if self.pda.state == "parsing_key":
-                if self.text_parser.is_terminating_quote(ch):
-                    self.sink.set_current(self.text_parser.buffer)
-                    self.text_parser.reset()
+                if self.decoder.is_terminating_quote(ch):
+                    self.sink.set_current(self.decoder.buffer)
+                    self.decoder.reset()
                     self.pda.set_state("expect_colon")
                     return
                 else:
-                    self.text_parser.push(ch)
+                    self.decoder.push(ch)
                     return
 
             if self.pda.state == "parsing_primitive":
                 if ch not in ",}":
-                    self.text_parser.push(ch)
+                    self.decoder.push(ch)
                     return
                 else:
-                    if self.text_parser.buffer == "null":
+                    if self.decoder.buffer == "null":
                         await self.sink.emit(None)
-                    elif self.text_parser.buffer == "true":
+                    elif self.decoder.buffer == "true":
                         await self.sink.emit(True)
-                    elif self.text_parser.buffer == "false":
+                    elif self.decoder.buffer == "false":
                         await self.sink.emit(False)
 
                     else:
                         try:
-                            buffer = self.text_parser.buffer
+                            buffer = self.decoder.buffer
                             value = float(buffer) if "." in buffer else int(buffer)
                             await self.sink.emit(value)
                         except ValueError as e:
@@ -203,7 +203,7 @@ class JMux(ABC):
                                 f"Invalid primitive value: {buffer}"
                             ) from e
                     await self.sink.close()
-                    self.text_parser.reset()
+                    self.decoder.reset()
                     self.pda.set_state("expect_key")
                     return
 
@@ -226,13 +226,13 @@ class JMux(ABC):
         # CONTEXT: Array
         if self.pda.top == "array":
             if self.pda.state == "parsing_string":
-                if self.text_parser.is_terminating_quote(ch):
-                    await self.sink.emit(self.text_parser.buffer)
-                    self.text_parser.reset()
+                if self.decoder.is_terminating_quote(ch):
+                    await self.sink.emit(self.decoder.buffer)
+                    self.decoder.reset()
                     self.pda.set_state("expect_comma_or_eoc")
                     return
                 else:
-                    self.text_parser.push(ch)
+                    self.decoder.push(ch)
                     return
 
             if self.pda.state == "expect_comma_or_eoc":
@@ -261,25 +261,25 @@ class JMux(ABC):
 
             if self.pda.state == "parsing_primitive":
                 if ch not in ",]":
-                    self.text_parser.push(ch)
+                    self.decoder.push(ch)
                     return
                 else:
-                    if self.text_parser.buffer == "null":
+                    if self.decoder.buffer == "null":
                         await self.sink.emit(None)
-                    elif self.text_parser.buffer == "true":
+                    elif self.decoder.buffer == "true":
                         await self.sink.emit(True)
-                    elif self.text_parser.buffer == "false":
+                    elif self.decoder.buffer == "false":
                         await self.sink.emit(False)
                     else:
                         try:
-                            buffer = self.text_parser.buffer
+                            buffer = self.decoder.buffer
                             value = float(buffer) if "." in buffer else int(buffer)
                             await self.sink.emit(value)
                         except ValueError as e:
                             raise ValueError(
                                 f"Error parsing primitive value, buffer: {buffer}, {e}"
                             ) from e
-                    self.text_parser.reset()
+                    self.decoder.reset()
                     if ch == ",":
                         self.pda.set_state("expect_value")
                     elif ch == "]":
