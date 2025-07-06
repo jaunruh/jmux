@@ -5,7 +5,7 @@ from asyncio import gather
 from typing import List, Optional
 
 import pytest
-from jmux.demux import JMux
+from jmux.demux import JMux, Mode, State
 from jmux.types import AwaitableValue, StreamableValues
 
 
@@ -30,6 +30,121 @@ LOG_EMITS = os.environ.get("LOG_EMITS", "0") == "1"
 def log_emit(message: str):
     if LOG_EMITS:
         print(message)
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    "stream,expected_stack,expected_state",
+    [
+        ("", [], "start"),
+        ("{", ["$"], "expect_key"),
+        ("{ ", ["$"], "expect_key"),
+        ('{"', ["$"], "parsing_key"),
+        ('{"key_', ["$"], "parsing_key"),
+        ('{"key_str', ["$"], "parsing_key"),
+        ('{"key_str"', ["$"], "expect_colon"),
+        ('{"key_str":', ["$"], "expect_value"),
+        ('{"key_str": ', ["$"], "expect_value"),
+        ('{"key_str": \t\n', ["$"], "expect_value"),
+        ('{"key_str": "', ["$"], "parsing_string"),
+        ('{"key_str": "val', ["$"], "parsing_string"),
+        ('{"key_str": "val"', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val" \t\n', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val",', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int', ["$"], "parsing_key"),
+        ('{"key_str": "val","key_int"', ["$"], "expect_colon"),
+        ('{"key_str": "val","key_int":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int": \t\n', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":4', ["$"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42', ["$"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42,', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"', ["$"], "parsing_key"),
+        ('{"key_str": "val","key_int":42,"key_float"', ["$"], "expect_colon"),
+        ('{"key_str": "val","key_int":42,"key_float":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14', ["$"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":t', ["$"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true', ["$"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":n', ["$"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream', ["$"], "parsing_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream', ["$"], "parsing_string"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{', ["$", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"', ["$", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str"', ["$", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"', ["$", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"}', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":[', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["', ["$", "array"], "parsing_string"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1"', ["$", "array"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1" \t\n', ["$", "array"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1",', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1", \t\n', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2",', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3', ["$", "array"], "parsing_string"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"', ["$", "array"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"]', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42', ["$", "array"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3', ["$", "array"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14', ["$", "array"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,30,', ["$", "array"], "expect_value"), # Warning: this should throw
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4]', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true', ["$", "array"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false', ["$", "array"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true]', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,nul', ["$", "array"], "parsing_primitive"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null]', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{', ["$", "array", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_s', ["$", "array", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"}', ["$", "array"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nes', ["$", "array", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}', ["$", "array"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]}', [], "end"),
+    ],
+)
+# fmt: on
+@pytest.mark.anyio
+async def test_json_demux__parse_correct_stream__assert_state(
+    stream: str, expected_stack: List[Mode], expected_state: State
+):
+    class SObject(JMux):
+        class SNested(JMux):
+            key_str: AwaitableValue[str]
+
+        key_str: AwaitableValue[str]
+        key_int: AwaitableValue[int]
+        key_float: AwaitableValue[float]
+        key_bool: AwaitableValue[bool]
+        key_none: AwaitableValue[None]
+        key_stream: StreamableValues[str]
+        key_nested: AwaitableValue[SNested]
+
+        arr_str: StreamableValues[str]
+        arr_int: StreamableValues[int]
+        arr_float: StreamableValues[float]
+        arr_bool: StreamableValues[bool]
+        arr_none: StreamableValues[None]
+        arr_nested: StreamableValues[SNested]
+
+    s_object = SObject()
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert s_object.pda.state == expected_state
+    assert s_object.pda._stack == expected_stack
 
 
 @pytest.mark.parametrize(
