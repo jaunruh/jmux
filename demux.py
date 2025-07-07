@@ -175,11 +175,13 @@ class JMux(ABC):
         # CONTEXT: Root
         if self.pda.top == "$":
             if self.pda.state == "expect_key":
-                if ch == '"':
+                if is_json_whitespace(ch):
+                    return
+                elif ch == '"':
                     self.pda.set_state("parsing_key")
                     self.decoder.reset()
                     return
-                elif not is_json_whitespace(ch):
+                else:
                     raise UnexpectedCharacterError(
                         ch,
                         self.pda.stack,
@@ -201,10 +203,12 @@ class JMux(ABC):
                     return
 
             if self.pda.state == "expect_colon":
-                if ch == ":":
+                if is_json_whitespace(ch):
+                    return
+                elif ch == ":":
                     self.pda.set_state("expect_value")
                     return
-                elif not is_json_whitespace(ch):
+                else:
                     raise UnexpectedCharacterError(
                         ch,
                         self.pda.stack,
@@ -266,13 +270,15 @@ class JMux(ABC):
                     return
 
             if self.pda.state == "expect_comma_or_eoc":
-                if ch == ",":
+                if is_json_whitespace(ch):
+                    return
+                elif ch == ",":
                     self.pda.set_state("expect_key")
                     return
                 elif ch == "}":
-                    await self._close_context("end")
+                    await self._emit_and_close_context("end")
                     return
-                elif not is_json_whitespace(ch):
+                else:
                     raise UnexpectedCharacterError(
                         ch,
                         self.pda.stack,
@@ -290,12 +296,14 @@ class JMux(ABC):
                 )
 
             if self.pda.state == "expect_value":
-                if await self._handle_common__expect_value(ch):
+                if is_json_whitespace(ch):
+                    return
+                elif await self._handle_common__expect_value(ch):
                     return
                 elif ch == "]":
-                    await self._close_context("expect_comma_or_eoc")
+                    await self._emit_and_close_context("expect_comma_or_eoc")
                     return
-                elif not is_json_whitespace(ch):
+                else:
                     raise UnexpectedCharacterError(
                         ch,
                         self.pda.stack,
@@ -331,17 +339,19 @@ class JMux(ABC):
                     if ch == ",":
                         self.pda.set_state("expect_value")
                     elif ch == "]":
-                        await self._close_context("expect_comma_or_eoc")
+                        await self._emit_and_close_context("expect_comma_or_eoc")
                     return
 
             if self.pda.state == "expect_comma_or_eoc":
-                if ch == ",":
+                if is_json_whitespace(ch):
+                    return
+                elif ch == ",":
                     self.pda.set_state("expect_value")
                     return
                 elif ch == "]":
-                    await self._close_context("expect_comma_or_eoc")
+                    await self._emit_and_close_context("expect_comma_or_eoc")
                     return
-                elif not is_json_whitespace(ch):
+                else:
                     raise UnexpectedCharacterError(
                         ch,
                         self.pda.stack,
@@ -446,7 +456,7 @@ class JMux(ABC):
             self.pda.push("object")
             return "parsing_object"
 
-    async def _close_context(self, new_state: State) -> None:
+    async def _emit_and_close_context(self, new_state: State) -> None:
         await self.sink.close()
         self.pda.pop()
         self.pda.set_state(new_state)
