@@ -137,9 +137,11 @@ class JMux(ABC):
     def __init__(self):
         self._instantiate_attributes()
         self._history: List[str] = []
-        self.pda: PushDownAutomata[Mode, State] = PushDownAutomata[Mode, State]("start")
-        self.decoder: StringDecoder = StringDecoder()
-        self.sink = Sink[Emittable](self)
+        self._pda: PushDownAutomata[Mode, State] = PushDownAutomata[Mode, State](
+            "start"
+        )
+        self._decoder: StringDecoder = StringDecoder()
+        self._sink = Sink[Emittable](self)
 
     def _instantiate_attributes(self) -> None:
         type_hints = get_type_hints(self.__class__)
@@ -160,122 +162,122 @@ class JMux(ABC):
         self._history.append(ch)
 
         # CONTEXT: Start
-        if self.pda.top is None:
-            if self.pda.state == "start":
+        if self._pda.top is None:
+            if self._pda.state == "start":
                 if ch == "{":
-                    self.pda.push("$")
-                    self.pda.set_state("expect_key")
+                    self._pda.push("$")
+                    self._pda.set_state("expect_key")
                     return
                 else:
                     raise UnexpectedCharacterError(
                         ch,
-                        self.pda.stack,
-                        self.pda.state,
+                        self._pda.stack,
+                        self._pda.state,
                         "JSON must start with '{' character.",
                     )
 
         # CONTEXT: Root
-        if self.pda.top == "$":
-            if self.pda.state == "expect_key":
+        if self._pda.top == "$":
+            if self._pda.state == "expect_key":
                 if is_json_whitespace(ch):
                     return
                 elif ch == '"':
-                    self.pda.set_state("parsing_key")
-                    self.decoder.reset()
+                    self._pda.set_state("parsing_key")
+                    self._decoder.reset()
                     return
                 else:
                     raise UnexpectedCharacterError(
                         ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Expected '\"' in state '{self.pda.state}', got '{ch}'.",
+                        self._pda.stack,
+                        self._pda.state,
+                        "Char needs to be '\"' or JSON whitespaces",
                     )
 
-            if self.pda.state == "parsing_key":
-                if self.decoder.is_terminating_quote(ch):
-                    buffer = self.decoder.buffer
+            if self._pda.state == "parsing_key":
+                if self._decoder.is_terminating_quote(ch):
+                    buffer = self._decoder.buffer
                     if not buffer:
                         raise EmptyKeyError("Empty key is not allowed in JSON objects.")
-                    self.sink.set_current(buffer)
-                    self.decoder.reset()
-                    self.pda.set_state("expect_colon")
+                    self._sink.set_current(buffer)
+                    self._decoder.reset()
+                    self._pda.set_state("expect_colon")
                     return
                 else:
-                    self.decoder.push(ch)
+                    self._decoder.push(ch)
                     return
 
-            if self.pda.state == "expect_colon":
+            if self._pda.state == "expect_colon":
                 if is_json_whitespace(ch):
                     return
                 elif ch == ":":
-                    self.pda.set_state("expect_value")
+                    self._pda.set_state("expect_value")
                     return
                 else:
                     raise UnexpectedCharacterError(
                         ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Expected ':' in state '{self.pda.state}', got '{ch}'.",
+                        self._pda.stack,
+                        self._pda.state,
+                        "Char must be ':' or JSON whitespaces.",
                     )
 
-            if self.pda.state == "expect_value":
+            if self._pda.state == "expect_value":
                 if is_json_whitespace(ch):
                     return
                 elif res := await self._handle_common__expect_value(ch):
                     if (
-                        self.sink.current_sink_type == "StreamableValues"
+                        self._sink.current_sink_type == "StreamableValues"
                         and res != "parsing_string"
                     ):
                         raise UnexpectedCharacterError(
                             ch,
-                            self.pda.stack,
-                            self.pda.state,
-                            f"Expected '[' or '\"' in state '{self.pda.state}' for  'StreamableValues', got '{ch}'.",
+                            self._pda.stack,
+                            self._pda.state,
+                            "Expected '[' or '\"' for 'StreamableValues'",
                         )
                     return
                 elif ch == "[":
-                    self.pda.set_state("expect_value")
-                    self.pda.push("array")
+                    self._pda.set_state("expect_value")
+                    self._pda.push("array")
                     return
                 else:
                     raise UnexpectedCharacterError(
                         ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Expected value, '[', or white space in state '{self.pda.state}', got '{ch}'.",
+                        self._pda.stack,
+                        self._pda.state,
+                        "Expected '[' or white space.",
                     )
 
-            if self.pda.state == "parsing_string":
-                if self.decoder.is_terminating_quote(ch):
-                    if self.sink.current_sink_type == "AwaitableValue":
-                        await self.sink.emit(self.decoder.buffer)
-                    self.decoder.reset()
-                    await self.sink.close()
-                    self.pda.set_state("expect_comma_or_eoc")
+            if self._pda.state == "parsing_string":
+                if self._decoder.is_terminating_quote(ch):
+                    if self._sink.current_sink_type == "AwaitableValue":
+                        await self._sink.emit(self._decoder.buffer)
+                    self._decoder.reset()
+                    await self._sink.close()
+                    self._pda.set_state("expect_comma_or_eoc")
                     return
                 else:
-                    self.decoder.push(ch)
-                    if self.sink.current_sink_type == "StreamableValues":
-                        await self.sink.emit(ch)
+                    self._decoder.push(ch)
+                    if self._sink.current_sink_type == "StreamableValues":
+                        await self._sink.emit(ch)
                     return
 
-            if self.pda.state in PRIMITIVE_STATES:
+            if self._pda.state in PRIMITIVE_STATES:
                 if ch not in ",}":
                     self._assert_primitive_character_allowed_in_state(ch)
-                    self.decoder.push(ch)
+                    self._decoder.push(ch)
                     return
                 else:
                     await self._parse_primitive(ch)
-                    await self.sink.close()
-                    self.decoder.reset()
-                    self.pda.set_state("expect_key")
+                    await self._sink.close()
+                    self._decoder.reset()
+                    self._pda.set_state("expect_key")
                     return
 
-            if self.pda.state == "expect_comma_or_eoc":
+            if self._pda.state == "expect_comma_or_eoc":
                 if is_json_whitespace(ch):
                     return
                 elif ch == ",":
-                    self.pda.set_state("expect_key")
+                    self._pda.set_state("expect_key")
                     return
                 elif ch == "}":
                     await self._emit_and_close_context("end")
@@ -283,21 +285,22 @@ class JMux(ABC):
                 else:
                     raise UnexpectedCharacterError(
                         ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Expected ',', '}}' or white space in state '{self.pda.state}', got '{ch}'.",
+                        self._pda.stack,
+                        self._pda.state,
+                        "Expected ',', '}' or white space.",
                     )
+
         # CONTEXT: Array
-        if self.pda.top == "array":
+        if self._pda.top == "array":
             if ch == "[":
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
+                    self._pda.stack,
+                    self._pda.state,
                     "No support for 2-dimensional arrays.",
                 )
 
-            if self.pda.state == "expect_value":
+            if self._pda.state == "expect_value":
                 if is_json_whitespace(ch):
                     return
                 elif await self._handle_common__expect_value(ch):
@@ -308,47 +311,47 @@ class JMux(ABC):
                 else:
                     raise UnexpectedCharacterError(
                         ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Expected value, ']' or white space in state '{self.pda.state}', got '{ch}'.",
+                        self._pda.stack,
+                        self._pda.state,
+                        "Expected value, ']' or white space",
                     )
 
-            if self.pda.state == "parsing_string":
-                if self.sink.current_sink_type == "AwaitableValue":
+            if self._pda.state == "parsing_string":
+                if self._sink.current_sink_type == "AwaitableValue":
                     raise UnexpectedCharacterError(
                         ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        "Cannot parse string in an array with AwaitableValue sink type.",
+                        self._pda.stack,
+                        self._pda.state,
+                        "Cannot parse string inside of an array with AwaitableValue sink type.",
                     )
-                if self.decoder.is_terminating_quote(ch):
-                    await self.sink.emit(self.decoder.buffer)
-                    self.decoder.reset()
-                    self.pda.set_state("expect_comma_or_eoc")
+                if self._decoder.is_terminating_quote(ch):
+                    await self._sink.emit(self._decoder.buffer)
+                    self._decoder.reset()
+                    self._pda.set_state("expect_comma_or_eoc")
                     return
                 else:
-                    self.decoder.push(ch)
+                    self._decoder.push(ch)
                     return
 
-            if self.pda.state in PRIMITIVE_STATES:
+            if self._pda.state in PRIMITIVE_STATES:
                 if ch not in ",]":
                     self._assert_primitive_character_allowed_in_state(ch)
-                    self.decoder.push(ch)
+                    self._decoder.push(ch)
                     return
                 else:
                     await self._parse_primitive(ch)
-                    self.decoder.reset()
+                    self._decoder.reset()
                     if ch == ",":
-                        self.pda.set_state("expect_value")
+                        self._pda.set_state("expect_value")
                     elif ch == "]":
                         await self._emit_and_close_context("expect_comma_or_eoc")
                     return
 
-            if self.pda.state == "expect_comma_or_eoc":
+            if self._pda.state == "expect_comma_or_eoc":
                 if is_json_whitespace(ch):
                     return
                 elif ch == ",":
-                    self.pda.set_state("expect_value")
+                    self._pda.set_state("expect_value")
                     return
                 elif ch == "]":
                     await self._emit_and_close_context("expect_comma_or_eoc")
@@ -356,171 +359,171 @@ class JMux(ABC):
                 else:
                     raise UnexpectedCharacterError(
                         ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Expected ',', ']' or white space in state '{self.pda.state}', got '{ch}'.",
+                        self._pda.stack,
+                        self._pda.state,
+                        "Expected ',', ']' or white space.",
                     )
 
         # CONTEXT: Object
-        if self.pda.top == "object":
-            if self.pda.state != "parsing_object":
+        if self._pda.top == "object":
+            if self._pda.state != "parsing_object":
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"State in object context must be 'parsing_object', got '{self.pda.state}'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    "State in object context must be 'parsing_object'",
                 )
             if ch == "}":
-                self.pda.pop()
-                if self.pda.top == "$":
-                    await self.sink.close()
-                self.pda.set_state("expect_comma_or_eoc")
+                self._pda.pop()
+                if self._pda.top == "$":
+                    await self._sink.close()
+                self._pda.set_state("expect_comma_or_eoc")
                 return
             else:
-                await self.sink.forward_char(ch)
+                await self._sink.forward_char(ch)
                 return
 
     async def _parse_primitive(self, ch: str) -> None:
-        if self.pda.state == "parsing_null":
-            if not self.decoder.buffer == "null":
+        if self._pda.state == "parsing_null":
+            if not self._decoder.buffer == "null":
                 raise ParsePrimitiveError(
-                    f"Expected 'null', got '{self.decoder.buffer}'"
+                    f"Expected 'null', got '{self._decoder.buffer}'"
                 )
-            await self.sink.emit(None)
-        elif self.pda.state == "parsing_boolean":
-            await self.sink.emit(self.decoder.buffer == "true")
+            await self._sink.emit(None)
+        elif self._pda.state == "parsing_boolean":
+            await self._sink.emit(self._decoder.buffer == "true")
         else:
             try:
-                buffer = self.decoder.buffer
-                generic = self.sink.current_underlying_generic
+                buffer = self._decoder.buffer
+                generic = self._sink.current_underlying_generic
                 value = float(buffer) if issubclass(generic, float) else int(buffer)
             except ValueError as e:
                 raise ParsePrimitiveError(f"Buffer: {buffer}; Error: {e}") from e
-            await self.sink.emit(value)
+            await self._sink.emit(value)
 
     async def _handle_common__expect_value(self, ch: str) -> State | None:
-        generic = self.sink.current_underlying_generic
+        generic = self._sink.current_underlying_generic
         if ch == '"':
             if generic is not str:
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Trying to parse string but underlying generic is '{generic.__name__}', expected 'str'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    f"Trying to parse 'string' but underlying generic is '{generic.__name__}'.",
                 )
-            self.pda.set_state("parsing_string")
-            self.decoder.reset()
+            self._pda.set_state("parsing_string")
+            self._decoder.reset()
             return "parsing_string"
         if ch in "0123456789-":
             if generic not in (int, float):
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Trying to parse number but underlying generic is '{generic.__name__}', expected 'int' or 'float'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    f"Trying to parse 'number' but underlying generic is '{generic.__name__}'.",
                 )
-            self.decoder.push(ch)
+            self._decoder.push(ch)
             if generic is int:
-                self.pda.set_state("parsing_integer")
+                self._pda.set_state("parsing_integer")
                 return "parsing_integer"
             else:
-                self.pda.set_state("parsing_float")
+                self._pda.set_state("parsing_float")
                 return "parsing_float"
         if ch in "tf":
             if generic is not bool:
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Trying to parse boolean but underlying generic is '{generic.__name__}', expected 'bool'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    f"Trying to parse 'boolean' but underlying generic is '{generic.__name__}'.",
                 )
-            self.pda.set_state("parsing_boolean")
-            self.decoder.push(ch)
+            self._pda.set_state("parsing_boolean")
+            self._decoder.push(ch)
             return "parsing_boolean"
         if ch in "n":
             if generic is not type(None):
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Trying to parse null but underlying generic is '{generic.__name__}', expected 'NoneType'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    f"Trying to parse 'null' but underlying generic is '{generic.__name__}'.",
                 )
-            self.pda.set_state("parsing_null")
-            self.decoder.push(ch)
+            self._pda.set_state("parsing_null")
+            self._decoder.push(ch)
             return "parsing_null"
         if ch == "{":
             if not issubclass(generic, JMux):
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Trying to parse object but underlying generic is '{generic.__name__}', expected 'JMux'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    f"Trying to parse 'object' but underlying generic is '{generic.__name__}'.",
                 )
-            await self.sink.create_and_emit_nested()
-            await self.sink.forward_char(ch)
-            self.pda.set_state("parsing_object")
-            self.pda.push("object")
+            await self._sink.create_and_emit_nested()
+            await self._sink.forward_char(ch)
+            self._pda.set_state("parsing_object")
+            self._pda.push("object")
             return "parsing_object"
 
     async def _emit_and_close_context(self, new_state: State) -> None:
-        await self.sink.close()
-        self.pda.pop()
-        self.pda.set_state(new_state)
+        await self._sink.close()
+        self._pda.pop()
+        self._pda.set_state(new_state)
 
     def _assert_primitive_character_allowed_in_state(self, ch: str) -> None:
-        if self.pda.state == "parsing_integer":
+        if self._pda.state == "parsing_integer":
             if ch not in "0123456789":
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    "Trying to parse 'integer' but received unexpected character.",
                 )
-        elif self.pda.state == "parsing_float":
+        elif self._pda.state == "parsing_float":
             if ch not in "0123456789-+eE.":
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    "Trying to parse 'float' but received unexpected character.",
                 )
-        elif self.pda.state == "parsing_boolean":
+        elif self._pda.state == "parsing_boolean":
             if ch not in "truefals":
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    "Trying to parse 'boolean' but received unexpected character.",
                 )
             if not (
-                "true".startswith(f"{self.decoder.buffer}{ch}")
-                or "false".startswith(f"{self.decoder.buffer}{ch}")
+                "true".startswith(f"{self._decoder.buffer}{ch}")
+                or "false".startswith(f"{self._decoder.buffer}{ch}")
             ):
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    f"Unexpected character added to buffer for 'boolean': '{self._decoder.buffer}{ch}'.",
                 )
-        elif self.pda.state == "parsing_null":
+        elif self._pda.state == "parsing_null":
             if ch not in "nul":
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    "Trying to parse 'null' but received unexpected character.",
                 )
-            if not "null".startswith(f"{self.decoder.buffer}{ch}"):
+            if not "null".startswith(f"{self._decoder.buffer}{ch}"):
                 raise UnexpectedCharacterError(
                     ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                    self._pda.stack,
+                    self._pda.state,
+                    f"Unexpected character added to buffer for 'null': '{self._decoder.buffer}{ch}'.",
                 )
         else:
             raise UnexpectedCharacterError(
                 ch,
-                self.pda.stack,
-                self.pda.state,
-                f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                self._pda.stack,
+                self._pda.state,
+                "An unexpected error happened.",
             )

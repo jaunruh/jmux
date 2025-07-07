@@ -148,8 +148,8 @@ async def test_json_demux__parse_correct_stream__assert_state(
     for ch in stream:
         await s_object.feed_char(ch)
 
-    assert s_object.pda.state == expected_state
-    assert s_object.pda._stack == expected_stack
+    assert s_object._pda.state == expected_state
+    assert s_object._pda._stack == expected_stack
 
 
 # fmt: off
