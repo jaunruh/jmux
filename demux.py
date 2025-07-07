@@ -160,10 +160,18 @@ class JMux(ABC):
 
         # CONTEXT: Start
         if self.pda.top is None:
-            if self.pda.state == "start" and ch == "{":
-                self.pda.push("$")
-                self.pda.set_state("expect_key")
-                return
+            if self.pda.state == "start":
+                if ch == "{":
+                    self.pda.push("$")
+                    self.pda.set_state("expect_key")
+                    return
+                else:
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        "JSON must start with '{' character.",
+                    )
 
         # CONTEXT: Root
         if self.pda.top == "$":
@@ -172,6 +180,13 @@ class JMux(ABC):
                     self.pda.set_state("parsing_key")
                     self.decoder.reset()
                     return
+                elif not is_json_whitespace(ch):
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Expected '\"' in state '{self.pda.state}', got '{ch}'.",
+                    )
 
             if self.pda.state == "parsing_key":
                 if self.decoder.is_terminating_quote(ch):
@@ -190,6 +205,13 @@ class JMux(ABC):
                 if ch == ":":
                     self.pda.set_state("expect_value")
                     return
+                elif not is_json_whitespace(ch):
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Expected ':' in state '{self.pda.state}', got '{ch}'.",
+                    )
 
             if self.pda.state == "expect_value":
                 if await self._handle_common__expect_value(ch):
@@ -215,6 +237,7 @@ class JMux(ABC):
 
             if self.pda.state in PRIMITIVE_STATES:
                 if ch not in ",}":
+                    self._assert_primitive_character_allowed_in_state(ch)
                     self.decoder.push(ch)
                     return
                 else:
@@ -228,12 +251,26 @@ class JMux(ABC):
                 if ch == ",":
                     self.pda.set_state("expect_key")
                     return
-                if ch == "}":
+                elif ch == "}":
                     await self._close_context("end")
                     return
-
+                elif not is_json_whitespace(ch):
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Expected ',', '}}' or white space in state '{self.pda.state}', got '{ch}'.",
+                    )
         # CONTEXT: Array
         if self.pda.top == "array":
+            if ch == "[":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    "No support for 2-dimensional arrays.",
+                )
+
             if self.pda.state == "expect_value":
                 if await self._handle_common__expect_value(ch):
                     return
@@ -242,6 +279,13 @@ class JMux(ABC):
                     return
 
             if self.pda.state == "parsing_string":
+                if self.sink.current_sink_type == "AwaitableValue":
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        "Cannot parse string in an array with AwaitableValue sink type.",
+                    )
                 if self.decoder.is_terminating_quote(ch):
                     await self.sink.emit(self.decoder.buffer)
                     self.decoder.reset()
@@ -253,6 +297,7 @@ class JMux(ABC):
 
             if self.pda.state in PRIMITIVE_STATES:
                 if ch not in ",]":
+                    self._assert_primitive_character_allowed_in_state(ch)
                     self.decoder.push(ch)
                     return
                 else:
@@ -268,12 +313,26 @@ class JMux(ABC):
                 if ch == ",":
                     self.pda.set_state("expect_value")
                     return
-                if ch == "]":
+                elif ch == "]":
                     await self._close_context("expect_comma_or_eoc")
                     return
+                elif not is_json_whitespace(ch):
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Expected ',', ']' or white space in state '{self.pda.state}', got '{ch}'.",
+                    )
 
         # CONTEXT: Object
         if self.pda.top == "object":
+            if self.pda.state != "parsing_object":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"State in object context must be 'parsing_object', got '{self.pda.state}'.",
+                )
             if ch == "}":
                 self.pda.pop()
                 if self.pda.top == "$":
@@ -331,40 +390,51 @@ class JMux(ABC):
         self.pda.pop()
         self.pda.set_state(new_state)
 
+    def _assert_primitive_character_allowed_in_state(self, ch: str) -> None:
+        if self.pda.state == "parsing_number":
+            if ch not in "0123456789-+eE.":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                )
+        if self.pda.state == "parsing_boolean":
+            if ch not in "truefals":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                )
+            if not (
+                "true".startswith(f"{self.decoder.buffer}{ch}")
+                or "false".startswith(f"{self.decoder.buffer}{ch}")
+            ):
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                )
+
+        if self.pda.state == "parsing_null":
+            if ch not in "nul":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                )
+            if not "null".startswith(f"{self.decoder.buffer}{ch}"):
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                )
+
     def _assert_state_allowed(self, ch: str) -> None:
-        if self.pda.state == "start" and ch != "{":
-            raise UnexpectedCharacterError(
-                ch,
-                self.pda.stack,
-                self.pda.state,
-                "JSON must start with '{' character.",
-            )
-
-        if not is_json_whitespace(ch):
-            if self.pda.state == "expect_key" and ch != '"':
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Expected '\"' in state '{self.pda.state}', got '{ch}'.",
-                )
-
-            if self.pda.state == "expect_comma_or_eoc" and ch not in ",}]":
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Expected ',', '}}', ']' or white space in state '{self.pda.state}', got '{ch}'.",
-                )
-
-            if self.pda.state == "expect_colon" and ch != ":":
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Expected ':' in state '{self.pda.state}', got '{ch}'.",
-                )
-
         if self.pda.state == "expect_value":
             if is_json_whitespace(ch):
                 return
@@ -420,82 +490,4 @@ class JMux(ABC):
                     self.pda.stack,
                     self.pda.state,
                     f"Expected 'null' value to start with 'n', got '{ch}'.",
-                )
-
-        if self.pda.state in PRIMITIVE_STATES:
-            if ch in ",]}":
-                return
-
-            if self.pda.state == "parsing_number":
-                if ch not in "0123456789-+eE.":
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Unexpected character '{ch}' in state '{self.pda.state}'.",
-                    )
-            if self.pda.state == "parsing_boolean":
-                if ch not in "truefals":
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Unexpected character '{ch}' in state '{self.pda.state}'.",
-                    )
-                if not (
-                    "true".startswith(f"{self.decoder.buffer}{ch}")
-                    or "false".startswith(f"{self.decoder.buffer}{ch}")
-                ):
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Unexpected character '{ch}' in state '{self.pda.state}'.",
-                    )
-
-            if self.pda.state == "parsing_null":
-                if ch not in "nul":
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Unexpected character '{ch}' in state '{self.pda.state}'.",
-                    )
-                if not "null".startswith(f"{self.decoder.buffer}{ch}"):
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self.pda.stack,
-                        self.pda.state,
-                        f"Unexpected character '{ch}' in state '{self.pda.state}'.",
-                    )
-
-        # CONTEXT: Array
-        if self.pda.top == "array":
-            if ch == "[":
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    "No support for 2-dimensional arrays.",
-                )
-
-            if (
-                self.pda.state == "parsing_string"
-                and self.sink.current_sink_type == "AwaitableValue"
-            ):
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    "Cannot parse string in an array with AwaitableValue sink type.",
-                )
-
-        # CONTEXT: Object
-        if self.pda.top == "object":
-            if self.pda.state != "parsing_object":
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"State in object context must be 'parsing_object', got '{self.pda.state}'.",
                 )
