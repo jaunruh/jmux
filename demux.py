@@ -158,24 +158,6 @@ class JMux(ABC):
         self._history.append(ch)
         self._assert_state_allowed(ch)
 
-        if self.pda.state == "expect_value":
-            if ch == '"':
-                self.pda.set_state("parsing_string")
-                self.decoder.reset()
-                return
-            if ch in "123456789-":
-                self.pda.set_state("parsing_number")
-                self.decoder.push(ch)
-                return
-            if ch in "tf":
-                self.pda.set_state("parsing_boolean")
-                self.decoder.push(ch)
-                return
-            if ch in "n":
-                self.pda.set_state("parsing_null")
-                self.decoder.push(ch)
-                return
-
         # CONTEXT: Start
         if self.pda.top is None:
             if self.pda.state == "start" and ch == "{":
@@ -185,34 +167,11 @@ class JMux(ABC):
 
         # CONTEXT: Root
         if self.pda.top == "$":
-            if self.pda.state == "parsing_string":
-                if self.decoder.is_terminating_quote(ch):
-                    if self.sink.current_sink_type == "AwaitableValue":
-                        await self.sink.emit(self.decoder.buffer)
+            if self.pda.state == "expect_key":
+                if ch == '"':
+                    self.pda.set_state("parsing_key")
                     self.decoder.reset()
-                    await self.sink.close()
-                    self.pda.set_state("expect_comma_or_eoc")
                     return
-                else:
-                    self.decoder.push(ch)
-                    if self.sink.current_sink_type == "StreamableValues":
-                        await self.sink.emit(ch)
-                    return
-
-            if self.pda.state == "expect_comma_or_eoc":
-                if ch == ",":
-                    self.pda.set_state("expect_key")
-                    return
-                if ch == "}":
-                    await self.sink.close()
-                    self.pda.pop()
-                    self.pda.set_state("end")
-                    return
-
-            if self.pda.state == "expect_key" and ch == '"':
-                self.pda.set_state("parsing_key")
-                self.decoder.reset()
-                return
 
             if self.pda.state == "parsing_key":
                 if self.decoder.is_terminating_quote(ch):
@@ -227,6 +186,33 @@ class JMux(ABC):
                     self.decoder.push(ch)
                     return
 
+            if self.pda.state == "expect_colon":
+                if ch == ":":
+                    self.pda.set_state("expect_value")
+                    return
+
+            if self.pda.state == "expect_value":
+                if await self._handle_common__expect_value(ch):
+                    return
+                if ch == "[":
+                    self.pda.set_state("expect_value")
+                    self.pda.push("array")
+                    return
+
+            if self.pda.state == "parsing_string":
+                if self.decoder.is_terminating_quote(ch):
+                    if self.sink.current_sink_type == "AwaitableValue":
+                        await self.sink.emit(self.decoder.buffer)
+                    self.decoder.reset()
+                    await self.sink.close()
+                    self.pda.set_state("expect_comma_or_eoc")
+                    return
+                else:
+                    self.decoder.push(ch)
+                    if self.sink.current_sink_type == "StreamableValues":
+                        await self.sink.emit(ch)
+                    return
+
             if self.pda.state in PRIMITIVE_STATES:
                 if ch not in ",}":
                     self.decoder.push(ch)
@@ -238,24 +224,23 @@ class JMux(ABC):
                     self.pda.set_state("expect_key")
                     return
 
-            if self.pda.state == "expect_colon" and ch == ":":
-                self.pda.set_state("expect_value")
-                return
-
-            if self.pda.state == "expect_value":
-                if ch == "{":
-                    await self.sink.create_and_emit_nested()
-                    await self.sink.forward_char(ch)
-                    self.pda.set_state("parsing_object")
-                    self.pda.push("object")
+            if self.pda.state == "expect_comma_or_eoc":
+                if ch == ",":
+                    self.pda.set_state("expect_key")
                     return
-                if ch == "[":
-                    self.pda.set_state("expect_value")
-                    self.pda.push("array")
+                if ch == "}":
+                    await self._close_context("end")
                     return
 
         # CONTEXT: Array
         if self.pda.top == "array":
+            if self.pda.state == "expect_value":
+                if await self._handle_common__expect_value(ch):
+                    return
+                if ch == "]":
+                    await self._close_context("expect_comma_or_eoc")
+                    return
+
             if self.pda.state == "parsing_string":
                 if self.decoder.is_terminating_quote(ch):
                     await self.sink.emit(self.decoder.buffer)
@@ -264,29 +249,6 @@ class JMux(ABC):
                     return
                 else:
                     self.decoder.push(ch)
-                    return
-
-            if self.pda.state == "expect_comma_or_eoc":
-                if ch == ",":
-                    self.pda.set_state("expect_value")
-                    return
-                if ch == "]":
-                    await self.sink.close()
-                    self.pda.pop()
-                    self.pda.set_state("expect_comma_or_eoc")
-                    return
-
-            if self.pda.state == "expect_value":
-                if ch == "{":
-                    await self.sink.create_and_emit_nested()
-                    await self.sink.forward_char(ch)
-                    self.pda.set_state("parsing_object")
-                    self.pda.push("object")
-                    return
-                if ch == "]":
-                    await self.sink.close()
-                    self.pda.pop()
-                    self.pda.set_state("expect_comma_or_eoc")
                     return
 
             if self.pda.state in PRIMITIVE_STATES:
@@ -299,9 +261,15 @@ class JMux(ABC):
                     if ch == ",":
                         self.pda.set_state("expect_value")
                     elif ch == "]":
-                        await self.sink.close()
-                        self.pda.pop()
-                        self.pda.set_state("expect_comma_or_eoc")
+                        await self._close_context("expect_comma_or_eoc")
+                    return
+
+            if self.pda.state == "expect_comma_or_eoc":
+                if ch == ",":
+                    self.pda.set_state("expect_value")
+                    return
+                if ch == "]":
+                    await self._close_context("expect_comma_or_eoc")
                     return
 
         # CONTEXT: Object
@@ -334,7 +302,7 @@ class JMux(ABC):
                 raise ParsePrimitiveError(f"Buffer: {buffer}; Error: {e}") from e
             await self.sink.emit(value)
 
-    async def _parse_and_identify(self, ch: str) -> State | None:
+    async def _handle_common__expect_value(self, ch: str) -> State | None:
         if ch == '"':
             self.pda.set_state("parsing_string")
             self.decoder.reset()
@@ -351,6 +319,17 @@ class JMux(ABC):
             self.pda.set_state("parsing_null")
             self.decoder.push(ch)
             return "parsing_null"
+        if ch == "{":
+            await self.sink.create_and_emit_nested()
+            await self.sink.forward_char(ch)
+            self.pda.set_state("parsing_object")
+            self.pda.push("object")
+            return "parsing_object"
+
+    async def _close_context(self, new_state: State) -> None:
+        await self.sink.close()
+        self.pda.pop()
+        self.pda.set_state(new_state)
 
     def _assert_state_allowed(self, ch: str) -> None:
         if self.pda.state == "start" and ch != "{":
