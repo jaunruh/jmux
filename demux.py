@@ -38,14 +38,16 @@ type State = Literal[
     # parsing
     "parsing_key",
     "parsing_string",
-    "parsing_number",
+    "parsing_integer",
+    "parsing_float",
     "parsing_boolean",
     "parsing_null",
     "parsing_object",
 ]
 
 PRIMITIVE_STATES: List[State] = [
-    "parsing_number",
+    "parsing_integer",
+    "parsing_float",
     "parsing_boolean",
     "parsing_null",
 ]
@@ -409,7 +411,7 @@ class JMux(ABC):
             self.pda.set_state("parsing_string")
             self.decoder.reset()
             return "parsing_string"
-        if ch in "123456789-":
+        if ch in "0123456789-":
             if generic not in (int, float):
                 raise UnexpectedCharacterError(
                     ch,
@@ -417,9 +419,13 @@ class JMux(ABC):
                     self.pda.state,
                     f"Trying to parse number but underlying generic is '{generic.__name__}', expected 'int' or 'float'.",
                 )
-            self.pda.set_state("parsing_number")
             self.decoder.push(ch)
-            return "parsing_number"
+            if generic is int:
+                self.pda.set_state("parsing_integer")
+                return "parsing_integer"
+            else:
+                self.pda.set_state("parsing_float")
+                return "parsing_float"
         if ch in "tf":
             if generic is not bool:
                 raise UnexpectedCharacterError(
@@ -462,7 +468,15 @@ class JMux(ABC):
         self.pda.set_state(new_state)
 
     def _assert_primitive_character_allowed_in_state(self, ch: str) -> None:
-        if self.pda.state == "parsing_number":
+        if self.pda.state == "parsing_integer":
+            if ch not in "0123456789":
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+                )
+        elif self.pda.state == "parsing_float":
             if ch not in "0123456789-+eE.":
                 raise UnexpectedCharacterError(
                     ch,
@@ -470,7 +484,7 @@ class JMux(ABC):
                     self.pda.state,
                     f"Unexpected character '{ch}' in state '{self.pda.state}'.",
                 )
-        if self.pda.state == "parsing_boolean":
+        elif self.pda.state == "parsing_boolean":
             if ch not in "truefals":
                 raise UnexpectedCharacterError(
                     ch,
@@ -488,8 +502,7 @@ class JMux(ABC):
                     self.pda.state,
                     f"Unexpected character '{ch}' in state '{self.pda.state}'.",
                 )
-
-        if self.pda.state == "parsing_null":
+        elif self.pda.state == "parsing_null":
             if ch not in "nul":
                 raise UnexpectedCharacterError(
                     ch,
@@ -504,3 +517,10 @@ class JMux(ABC):
                     self.pda.state,
                     f"Unexpected character '{ch}' in state '{self.pda.state}'.",
                 )
+        else:
+            raise UnexpectedCharacterError(
+                ch,
+                self.pda.stack,
+                self.pda.state,
+                f"Unexpected character '{ch}' in state '{self.pda.state}'.",
+            )
