@@ -232,28 +232,7 @@ class JMux(ABC):
                     self.decoder.push(ch)
                     return
                 else:
-                    if self.pda.state == "parsing_null":
-                        if not self.decoder.buffer == "null":
-                            raise ParsePrimitiveError(
-                                f"Expected 'null', got '{self.decoder.buffer}'"
-                            )
-                        await self.sink.emit(None)
-                    elif self.pda.state == "parsing_boolean":
-                        await self.sink.emit(self.decoder.buffer == "true")
-                    else:
-                        try:
-                            buffer = self.decoder.buffer
-                            generic = self.sink.current_underlying_generic
-                            value = (
-                                float(buffer)
-                                if issubclass(generic, float)
-                                else int(buffer)
-                            )
-                        except ValueError as e:
-                            raise ParsePrimitiveError(
-                                f"Buffer: {buffer}; Error: {e}"
-                            ) from e
-                        await self.sink.emit(value)
+                    await self._parse_primitive(ch)
                     await self.sink.close()
                     self.decoder.reset()
                     self.pda.set_state("expect_key")
@@ -298,7 +277,6 @@ class JMux(ABC):
                     return
 
             if self.pda.state == "expect_value":
-                # Most cases are handled above
                 if ch == "{":
                     await self.sink.create_and_emit_nested()
                     await self.sink.forward_char(ch)
@@ -316,28 +294,7 @@ class JMux(ABC):
                     self.decoder.push(ch)
                     return
                 else:
-                    if self.pda.state == "parsing_null":
-                        if not self.decoder.buffer == "null":
-                            raise ParsePrimitiveError(
-                                f"Expected 'null', got '{self.decoder.buffer}'"
-                            )
-                        await self.sink.emit(None)
-                    elif self.pda.state == "parsing_boolean":
-                        await self.sink.emit(self.decoder.buffer == "true")
-                    else:
-                        try:
-                            buffer = self.decoder.buffer
-                            generic = self.sink.current_underlying_generic
-                            value = (
-                                float(buffer)
-                                if issubclass(generic, float)
-                                else int(buffer)
-                            )
-                        except ValueError as e:
-                            raise ParsePrimitiveError(
-                                f"Buffer: {buffer}; Error: {e}"
-                            ) from e
-                        await self.sink.emit(value)
+                    await self._parse_primitive(ch)
                     self.decoder.reset()
                     if ch == ",":
                         self.pda.set_state("expect_value")
@@ -358,6 +315,42 @@ class JMux(ABC):
             else:
                 await self.sink.forward_char(ch)
                 return
+
+    async def _parse_primitive(self, ch: str) -> None:
+        if self.pda.state == "parsing_null":
+            if not self.decoder.buffer == "null":
+                raise ParsePrimitiveError(
+                    f"Expected 'null', got '{self.decoder.buffer}'"
+                )
+            await self.sink.emit(None)
+        elif self.pda.state == "parsing_boolean":
+            await self.sink.emit(self.decoder.buffer == "true")
+        else:
+            try:
+                buffer = self.decoder.buffer
+                generic = self.sink.current_underlying_generic
+                value = float(buffer) if issubclass(generic, float) else int(buffer)
+            except ValueError as e:
+                raise ParsePrimitiveError(f"Buffer: {buffer}; Error: {e}") from e
+            await self.sink.emit(value)
+
+    async def _parse_and_identify(self, ch: str) -> State | None:
+        if ch == '"':
+            self.pda.set_state("parsing_string")
+            self.decoder.reset()
+            return "parsing_string"
+        if ch in "123456789-":
+            self.pda.set_state("parsing_number")
+            self.decoder.push(ch)
+            return "parsing_number"
+        if ch in "tf":
+            self.pda.set_state("parsing_boolean")
+            self.decoder.push(ch)
+            return "parsing_boolean"
+        if ch in "n":
+            self.pda.set_state("parsing_null")
+            self.decoder.push(ch)
+            return "parsing_null"
 
     def _assert_state_allowed(self, ch: str) -> None:
         if self.pda.state == "start" and ch != "{":
