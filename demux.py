@@ -216,10 +216,17 @@ class JMux(ABC):
             if self.pda.state == "expect_value":
                 if await self._handle_common__expect_value(ch):
                     return
-                if ch == "[":
+                elif ch == "[":
                     self.pda.set_state("expect_value")
                     self.pda.push("array")
                     return
+                elif not is_json_whitespace(ch):
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Expected value, '[', or white space in state '{self.pda.state}', got '{ch}'.",
+                    )
 
             if self.pda.state == "parsing_string":
                 if self.decoder.is_terminating_quote(ch):
@@ -274,9 +281,16 @@ class JMux(ABC):
             if self.pda.state == "expect_value":
                 if await self._handle_common__expect_value(ch):
                     return
-                if ch == "]":
+                elif ch == "]":
                     await self._close_context("expect_comma_or_eoc")
                     return
+                elif not is_json_whitespace(ch):
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self.pda.stack,
+                        self.pda.state,
+                        f"Expected value, ']' or white space in state '{self.pda.state}', got '{ch}'.",
+                    )
 
             if self.pda.state == "parsing_string":
                 if self.sink.current_sink_type == "AwaitableValue":
@@ -362,23 +376,59 @@ class JMux(ABC):
             await self.sink.emit(value)
 
     async def _handle_common__expect_value(self, ch: str) -> State | None:
+        generic = self.sink.current_underlying_generic
         if ch == '"':
+            if generic is not str:
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Trying to parse string but underlying generic is '{generic.__name__}', expected 'str'.",
+                )
             self.pda.set_state("parsing_string")
             self.decoder.reset()
             return "parsing_string"
         if ch in "123456789-":
+            if generic not in (int, float):
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Trying to parse number but underlying generic is '{generic.__name__}', expected 'int' or 'float'.",
+                )
             self.pda.set_state("parsing_number")
             self.decoder.push(ch)
             return "parsing_number"
         if ch in "tf":
+            if generic is not bool:
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Trying to parse boolean but underlying generic is '{generic.__name__}', expected 'bool'.",
+                )
             self.pda.set_state("parsing_boolean")
             self.decoder.push(ch)
             return "parsing_boolean"
         if ch in "n":
+            if generic is not type(None):
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Trying to parse null but underlying generic is '{generic.__name__}', expected 'NoneType'.",
+                )
             self.pda.set_state("parsing_null")
             self.decoder.push(ch)
             return "parsing_null"
         if ch == "{":
+            if not issubclass(generic, JMux):
+                raise UnexpectedCharacterError(
+                    ch,
+                    self.pda.stack,
+                    self.pda.state,
+                    f"Trying to parse object but underlying generic is '{generic.__name__}', expected 'JMux'.",
+                )
             await self.sink.create_and_emit_nested()
             await self.sink.forward_char(ch)
             self.pda.set_state("parsing_object")
@@ -455,39 +505,3 @@ class JMux(ABC):
             if sink_type == "StreamableValues" and self.pda.top == "array":
                 if ch in "]":
                     return
-
-            if issubclass(generic, JMux) and ch not in "{":
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Expected '{generic.__name__}' to start with '{{' or '[', got '{ch}'.",
-                )
-            if generic is str and ch not in '"':
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Expected string value to start with '\"', got '{ch}'.",
-                )
-            if generic is bool and ch not in "tf":
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Expected boolean value to start with 't' or 'f', got '{ch}'.",
-                )
-            if (generic is int or generic is float) and ch not in "123456789-":
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Expected integer value to start with '1-9' or '-', got '{ch}'.",
-                )
-            if generic is type(None) and ch not in "n":
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Expected 'null' value to start with 'n', got '{ch}'.",
-                )
