@@ -156,7 +156,6 @@ class JMux(ABC):
 
     async def feed_char(self, ch: str) -> None:
         self._history.append(ch)
-        self._assert_state_allowed(ch)
 
         # CONTEXT: Start
         if self.pda.top is None:
@@ -214,13 +213,25 @@ class JMux(ABC):
                     )
 
             if self.pda.state == "expect_value":
-                if await self._handle_common__expect_value(ch):
+                if is_json_whitespace(ch):
+                    return
+                elif res := await self._handle_common__expect_value(ch):
+                    if (
+                        self.sink.current_sink_type == "StreamableValues"
+                        and res != "parsing_string"
+                    ):
+                        raise UnexpectedCharacterError(
+                            ch,
+                            self.pda.stack,
+                            self.pda.state,
+                            f"Expected '[' or '\"' in state '{self.pda.state}' for  'StreamableValues', got '{ch}'.",
+                        )
                     return
                 elif ch == "[":
                     self.pda.set_state("expect_value")
                     self.pda.push("array")
                     return
-                elif not is_json_whitespace(ch):
+                else:
                     raise UnexpectedCharacterError(
                         ch,
                         self.pda.stack,
@@ -483,25 +494,3 @@ class JMux(ABC):
                     self.pda.state,
                     f"Unexpected character '{ch}' in state '{self.pda.state}'.",
                 )
-
-    def _assert_state_allowed(self, ch: str) -> None:
-        if self.pda.state == "expect_value":
-            if is_json_whitespace(ch):
-                return
-
-            sink_type = self.sink.current_sink_type
-            generic = self.sink.current_underlying_generic
-            if sink_type == "StreamableValues" and self.pda.top != "array":
-                if ch in "[":
-                    return
-                if generic is str and ch == '"':
-                    return
-                raise UnexpectedCharacterError(
-                    ch,
-                    self.pda.stack,
-                    self.pda.state,
-                    f"Expected '[' or '\"' in state '{self.pda.state}' for  'StreamableValues', got '{ch}'.",
-                )
-            if sink_type == "StreamableValues" and self.pda.top == "array":
-                if ch in "]":
-                    return
