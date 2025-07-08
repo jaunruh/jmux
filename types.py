@@ -11,6 +11,8 @@ from typing import (
     runtime_checkable,
 )
 
+from jmux.error import NothingEmittedError, SinkClosedError
+
 type SinkType = Literal["StreamableValues", "AwaitableValue"]
 
 
@@ -101,6 +103,10 @@ class StreamableValues[T](UnderlyingGenericMixin[T]):
         await self._queue.put(item)
 
     async def close(self):
+        if self._closed:
+            raise SinkClosedError(
+                f"SinkType {self.get_sink_type()}[{self.get_underlying_main_generic()}] is already closed."
+            )
         self._closed = True
         await self._queue.put(None)
 
@@ -127,19 +133,28 @@ class StreamableValues[T](UnderlyingGenericMixin[T]):
 
 class AwaitableValue[T](UnderlyingGenericMixin[T]):
     def __init__(self):
-        self._value_set = False
+        self._is_closed = False
         self._event = Event()
         self._value: T | None = None
 
     async def put(self, value: T):
         if self._value:
             raise ValueError("AwaitableValue can only be set once.")
-        self._value_set = True
         self._value = value
         self._event.set()
 
     async def close(self):
-        pass
+        if self._is_closed:
+            raise SinkClosedError(
+                f"SinkType {self.get_sink_type()}[{self.get_underlying_main_generic().__name__}] is already closed."
+            )
+        elif not self._event.is_set() and NoneType in self.get_underlying_generics():
+            self._event.set()
+        elif not self._event.is_set():
+            raise NothingEmittedError(
+                "Trying to close non-NoneType AwaitableValue without a value."
+            )
+        self._is_closed = True
 
     def get_current(self) -> T:
         if not self._value:
@@ -154,6 +169,6 @@ class AwaitableValue[T](UnderlyingGenericMixin[T]):
 
     async def _wait(self) -> T:
         await self._event.wait()
-        if self._value is None and not self._value_set:
+        if self._value is None and not self._event.is_set():
             raise ValueError("No value has been put into the sink.")
         return cast(T, self._value)

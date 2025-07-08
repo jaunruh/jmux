@@ -42,6 +42,23 @@ class ParsePrimitiveError(Exception):
         )
 
 
+class NothingEmittedError(Exception):
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            "Nothing was emitted to the sink" + (f": {message}" if message else "")
+        )
+        self.message = message
+
+
+class SinkClosedError(Exception):
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            "Sink is closed and cannot accept new items"
+            + (f": {message}" if message else "")
+        )
+        self.message = message
+
+
 class UnexpectedCharacterError(Exception):
     def __init__(
         self,

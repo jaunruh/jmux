@@ -291,7 +291,8 @@ class JMux(ABC):
                     self._pda.set_state("expect_key")
                     return
                 elif ch == "}":
-                    await self._emit_and_close_context("end")
+                    self._pda.pop()
+                    self._pda.set_state("end")
                     return
                 else:
                     raise UnexpectedCharacterError(
@@ -317,7 +318,7 @@ class JMux(ABC):
                 elif await self._handle_common__expect_value(ch):
                     return
                 elif ch == "]":
-                    await self._emit_and_close_context("expect_comma_or_eoc")
+                    await self._close_context("expect_comma_or_eoc")
                     return
                 else:
                     raise UnexpectedCharacterError(
@@ -355,7 +356,7 @@ class JMux(ABC):
                     if ch == ",":
                         self._pda.set_state("expect_value")
                     elif ch == "]":
-                        await self._emit_and_close_context("expect_comma_or_eoc")
+                        await self._close_context("expect_comma_or_eoc")
                     return
 
             if self._pda.state == "expect_comma_or_eoc":
@@ -365,7 +366,7 @@ class JMux(ABC):
                     self._pda.set_state("expect_value")
                     return
                 elif ch == "]":
-                    await self._emit_and_close_context("expect_comma_or_eoc")
+                    await self._close_context("expect_comma_or_eoc")
                     return
                 else:
                     raise UnexpectedCharacterError(
@@ -477,7 +478,7 @@ class JMux(ABC):
             self._pda.push("object")
             return "parsing_object"
 
-    async def _emit_and_close_context(self, new_state: State) -> None:
+    async def _close_context(self, new_state: State) -> None:
         await self._sink.close()
         self._pda.pop()
         self._pda.set_state(new_state)
