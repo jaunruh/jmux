@@ -13,33 +13,28 @@ class NestedObject(JMux):
 @pytest.mark.parametrize(
     "TargetType,ExpectedType",
     [
-        (AwaitableValue[int], int),
-        (AwaitableValue[float], float),
-        (AwaitableValue[str], str),
-        (AwaitableValue[bool], bool),
-        (AwaitableValue[NestedObject], NestedObject),
-        (AwaitableValue[int | None], int | NoneType),
-        (AwaitableValue[float | None], float | NoneType),
-        (AwaitableValue[str | None], str | NoneType),
-        (AwaitableValue[bool | None], bool | NoneType),
-        (AwaitableValue[NestedObject | None], NestedObject | NoneType),
-        (StreamableValues[int], int),
-        (StreamableValues[float], float),
-        (StreamableValues[str], str),
-        (StreamableValues[bool], bool),
-        (StreamableValues[NestedObject], NestedObject),
-        (StreamableValues[int | None], int | NoneType),
-        (StreamableValues[float | None], float | NoneType),
-        (StreamableValues[str | None], str | NoneType),
-        (StreamableValues[bool | None], bool | NoneType),
-        (StreamableValues[NestedObject | None], NestedObject | NoneType),
+        (AwaitableValue[int], {int}),
+        (AwaitableValue[float], {float}),
+        (AwaitableValue[str], {str}),
+        (AwaitableValue[bool], {bool}),
+        (AwaitableValue[NestedObject], {NestedObject}),
+        (AwaitableValue[int | None], {int, NoneType}),
+        (AwaitableValue[float | None], {float, NoneType}),
+        (AwaitableValue[str | None], {str, NoneType}),
+        (AwaitableValue[bool | None], {bool, NoneType}),
+        (AwaitableValue[NestedObject | None], {NestedObject, NoneType}),
+        (StreamableValues[int], {int}),
+        (StreamableValues[float], {float}),
+        (StreamableValues[str], {str}),
+        (StreamableValues[bool], {bool}),
+        (StreamableValues[NestedObject], {NestedObject}),
     ],
 )
 def test_underlying_generic_mixin__get_underlying_generic__expected_set(
     TargetType: Type[IAsyncSink], ExpectedType: Type
 ):
     target = TargetType()
-    underlying_types = target.get_underlying_generic()
+    underlying_types = target.get_underlying_generics()
 
     assert underlying_types == ExpectedType
 
@@ -60,6 +55,11 @@ def test_underlying_generic_mixin__get_underlying_generic__expected_set(
         (AwaitableValue[bool | str | NoneType], TypeError),
         (AwaitableValue[bool | str], TypeError),
         (AwaitableValue[NestedObject | str], TypeError),
+        (StreamableValues[int | None], TypeError),
+        (StreamableValues[float | None], TypeError),
+        (StreamableValues[str | None], TypeError),
+        (StreamableValues[bool | None], TypeError),
+        (StreamableValues[NestedObject | None], TypeError),
     ],
 )
 def test_underlying_generic_mixin__get_underlying_generic__check_instantiation(
@@ -68,6 +68,6 @@ def test_underlying_generic_mixin__get_underlying_generic__check_instantiation(
     target = TargetType()
     if MaybeExpectedError:
         with pytest.raises(MaybeExpectedError):
-            _ = target.get_underlying_generic()
+            _ = target.get_underlying_generics()
     else:
-        _ = target.get_underlying_generic()
+        _ = target.get_underlying_generics()

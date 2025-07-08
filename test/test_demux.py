@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from asyncio import gather
+from types import NoneType
 from typing import List, Optional, Type
 
 import pytest
@@ -132,7 +133,7 @@ async def test_json_demux__parse_correct_stream__assert_state(
         key_int: AwaitableValue[int]
         key_float: AwaitableValue[float]
         key_bool: AwaitableValue[bool]
-        key_none: AwaitableValue[None]
+        key_none: AwaitableValue[NoneType]
         key_stream: StreamableValues[str]
         key_nested: AwaitableValue[SNested]
 
@@ -140,7 +141,7 @@ async def test_json_demux__parse_correct_stream__assert_state(
         arr_int: StreamableValues[int]
         arr_float: StreamableValues[float]
         arr_bool: StreamableValues[bool]
-        arr_none: StreamableValues[None]
+        arr_none: StreamableValues[NoneType]
         arr_nested: StreamableValues[SNested]
 
     s_object = SObject()
@@ -266,7 +267,7 @@ async def test_json_demux__parse_incorrect_stream__assert_error(
         key_int: AwaitableValue[int]
         key_float: AwaitableValue[float]
         key_bool: AwaitableValue[bool]
-        key_none: AwaitableValue[None]
+        key_none: AwaitableValue[NoneType]
         key_stream: StreamableValues[str]
         key_nested: AwaitableValue[SNested]
 
@@ -274,8 +275,73 @@ async def test_json_demux__parse_incorrect_stream__assert_error(
         arr_int: StreamableValues[int]
         arr_float: StreamableValues[float]
         arr_bool: StreamableValues[bool]
-        arr_none: StreamableValues[None]
+        arr_none: StreamableValues[NoneType]
         arr_nested: StreamableValues[SNested]
+
+    s_object = SObject()
+
+    if maybe_expected_error:
+        with pytest.raises(maybe_expected_error):
+            for ch in stream:
+                await s_object.feed_char(ch)
+    else:
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    "stream,maybe_expected_error",
+    [
+        ("b", UnexpectedCharacterError),
+        ("{", None),
+        ("{p", UnexpectedCharacterError),
+        ('{"', None),
+        ('{""', EmptyKeyError),
+        ('{"no_actual_key"', MissingAttributeError),
+        ('{"key_str"', None),
+        ('{"key_str": ""', None),
+        ('{"key_str": n', None),
+        ('{"key_str": null', None),
+        ('{"key_str": "val","key_int":4p', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":n', None),
+        ('{"key_str": "val","key_int":null', None),
+        ('{"key_str": "val","key_int":null,', None),
+        ('{"key_str": "val","key_int":420', None),
+        ('{"key_str": "val","key_int":-420', None),
+        ('{"key_str": "val","key_int":42,"key_float":0', None),
+        ('{"key_str": "val","key_int":42,"key_float":n', None),
+        ('{"key_str": "val","key_int":42,"key_float":null', None),
+        ('{"key_str": "val","key_int":42,"key_float":null,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":t', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":n', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":null', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":null,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":n', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":null', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":null,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{p', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{n', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{"key_str":"nested"},', None),
+    ],
+)
+# fmt: on
+@pytest.mark.anyio
+async def test_json_demux__parse_incorrect_stream_with_optionals__assert_error(
+    stream: str, maybe_expected_error: Type[Exception] | None
+):
+    class SObject(JMux):
+        class SNested(JMux):
+            key_str: AwaitableValue[str]
+
+        key_str: AwaitableValue[str | NoneType]
+        key_int: AwaitableValue[int | NoneType]
+        key_float: AwaitableValue[float | NoneType]
+        key_bool: AwaitableValue[bool | NoneType]
+        key_nested: AwaitableValue[SNested | NoneType]
 
     s_object = SObject()
 
@@ -721,7 +787,7 @@ async def test_json_demux__primitives(stream: str, expected_operations: List[str
         my_int: AwaitableValue[int]
         my_float: AwaitableValue[float]
         my_bool: AwaitableValue[bool]
-        my_none: AwaitableValue[None]
+        my_none: AwaitableValue[NoneType]
 
     llm_stream = AsyncStreamGenerator(stream)
     s_primitives = SPrimitives()
@@ -730,7 +796,7 @@ async def test_json_demux__primitives(stream: str, expected_operations: List[str
     my_int: Optional[int] = None
     my_float: Optional[float] = None
     my_bool: Optional[bool] = None
-    my_none: Optional[None] = None
+    my_none: Optional[NoneType] = None
     operation_list = []
 
     async def consume_str():

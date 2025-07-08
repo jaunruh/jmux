@@ -4,6 +4,7 @@ from typing import (
     AsyncGenerator,
     Literal,
     Protocol,
+    Set,
     Type,
     cast,
     get_args,
@@ -14,7 +15,7 @@ type SinkType = Literal["StreamableValues", "AwaitableValue"]
 
 
 class UnderlyingGenericMixin[T]:
-    def get_underlying_generic(self) -> Type[T]:
+    def get_underlying_generics(self) -> Set[Type[T]]:
         # `__orig_class__` is only set after the `__init__` method is called
         if not hasattr(self, "__orig_class__"):
             raise TypeError(
@@ -31,7 +32,7 @@ class UnderlyingGenericMixin[T]:
         if Generic is None:
             raise TypeError("Generic type not defined.")
         if isinstance(Generic, Type):
-            return Generic
+            return {Generic}
         elif isinstance(Generic, UnionType):
             type_set = set(g for g in get_args(Generic) if isinstance(g, type))
             if len(type_set) != 2:
@@ -42,15 +43,26 @@ class UnderlyingGenericMixin[T]:
                 raise TypeError(
                     "Union type must include NoneType if it is used as a generic argument."
                 )
-            return cast(Type[T], Generic)
+            return type_set
         else:
             raise TypeError("Generic argument is not a type or tuple of types.")
+
+    def get_underlying_main_generic(self) -> Type[T]:
+        underlying_generics = self.get_underlying_generics()
+        if len(underlying_generics) == 1:
+            return underlying_generics.pop()
+        remaining = {g for g in underlying_generics if g is not NoneType}
+        return remaining.pop()
 
 
 @runtime_checkable
 class IAsyncSink[T](Protocol):
-    def get_underlying_generic(self) -> Type[T]:
+    def get_underlying_generics(self) -> Set[Type[T]]:
         """Return the underlying generic type of the sink."""
+        ...
+
+    def get_underlying_main_generic(self) -> Type[T]:
+        """Return the underlying non-NoneType generic type of the sink."""
         ...
 
     async def put(self, item: T):
@@ -75,6 +87,12 @@ class StreamableValues[T](UnderlyingGenericMixin[T]):
         self._queue = Queue[T | None]()
         self._last_item: T | None = None
         self._closed = False
+
+    def get_underlying_generics(self) -> Set[Type[T]]:
+        generic = super().get_underlying_generics()
+        if len(generic) != 1:
+            raise TypeError("StreamableValues must have exactly one underlying type.")
+        return generic
 
     async def put(self, item: T):
         if self._closed:

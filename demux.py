@@ -1,8 +1,10 @@
 from abc import ABC
+from types import NoneType
 from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Type,
     get_args,
     get_origin,
@@ -73,10 +75,16 @@ class Sink[T: Emittable]:
         return self._current_sink.get_sink_type()
 
     @property
-    def current_underlying_generic(self) -> Type[T]:
+    def current_underlying_generics(self) -> Set[Type[T]]:
         if self._current_sink is None:
             raise NoCurrentSinkError()
-        return self._current_sink.get_underlying_generic()
+        return self._current_sink.get_underlying_generics()
+
+    @property
+    def current_underlying_main_generic(self) -> Type[T]:
+        if self._current_sink is None:
+            raise NoCurrentSinkError()
+        return self._current_sink.get_underlying_main_generic()
 
     def set_current(self, attr_name: str) -> None:
         if not hasattr(self._delegate, attr_name):
@@ -97,10 +105,12 @@ class Sink[T: Emittable]:
     async def emit(self, val: T) -> None:
         if self._current_sink is None:
             raise NoCurrentSinkError()
-        underlying_generic = self._current_sink.get_underlying_generic()
-        if not isinstance(val, underlying_generic):
+        generics = self._current_sink.get_underlying_generics()
+        if not any(
+            isinstance(val, underlying_generic) for underlying_generic in generics
+        ):
             raise TypeEmitError(
-                expected_type=f"{underlying_generic.__name__}",
+                expected_type=f"{generics}",
                 actual_type=f"{type(val).__name__}",
             )
         await self._current_sink.put(val)
@@ -113,7 +123,7 @@ class Sink[T: Emittable]:
     async def create_and_emit_nested(self) -> None:
         if self._current_sink is None:
             raise NoCurrentSinkError()
-        NestedJmux = self._current_sink.get_underlying_generic()
+        NestedJmux = self._current_sink.get_underlying_main_generic()
         if not issubclass(NestedJmux, JMux):
             raise TypeEmitError(
                 expected_type="JMux",
@@ -396,32 +406,33 @@ class JMux(ABC):
         else:
             try:
                 buffer = self._decoder.buffer
-                generic = self._sink.current_underlying_generic
+                generic = self._sink.current_underlying_main_generic
                 value = float(buffer) if issubclass(generic, float) else int(buffer)
             except ValueError as e:
                 raise ParsePrimitiveError(f"Buffer: {buffer}; Error: {e}") from e
             await self._sink.emit(value)
 
     async def _handle_common__expect_value(self, ch: str) -> State | None:
-        generic = self._sink.current_underlying_generic
+        generic_set = self._sink.current_underlying_generics
+        generic = self._sink.current_underlying_main_generic
         if ch == '"':
-            if generic is not str:
+            if str not in generic_set:
                 raise UnexpectedCharacterError(
                     ch,
                     self._pda.stack,
                     self._pda.state,
-                    f"Trying to parse 'string' but underlying generic is '{generic.__name__}'.",
+                    f"Trying to parse 'string' but underlying generic is '{generic_set}'.",
                 )
             self._pda.set_state("parsing_string")
             self._decoder.reset()
             return "parsing_string"
         if ch in "0123456789-":
-            if generic not in (int, float):
+            if not any(t in generic_set for t in (int, float)):
                 raise UnexpectedCharacterError(
                     ch,
                     self._pda.stack,
                     self._pda.state,
-                    f"Trying to parse 'number' but underlying generic is '{generic.__name__}'.",
+                    f"Trying to parse 'number' but underlying generic is '{generic_set}'.",
                 )
             self._decoder.push(ch)
             if generic is int:
@@ -431,7 +442,7 @@ class JMux(ABC):
                 self._pda.set_state("parsing_float")
                 return "parsing_float"
         if ch in "tf":
-            if generic is not bool:
+            if bool not in generic_set:
                 raise UnexpectedCharacterError(
                     ch,
                     self._pda.stack,
@@ -442,7 +453,7 @@ class JMux(ABC):
             self._decoder.push(ch)
             return "parsing_boolean"
         if ch in "n":
-            if generic is not type(None):
+            if NoneType not in generic_set:
                 raise UnexpectedCharacterError(
                     ch,
                     self._pda.stack,
