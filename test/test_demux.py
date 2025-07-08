@@ -10,7 +10,8 @@ from jmux.demux import JMux, Mode, State
 from jmux.error import (
     EmptyKeyError,
     MissingAttributeError,
-    NotAllPropertiesSetError,
+    NotAllObjectPropertiesSetError,
+    ObjectAlreadyClosedError,
     ParsePrimitiveError,
     UnexpectedCharacterError,
 )
@@ -561,28 +562,36 @@ class SPrimitivesPartial1(JMux):
     "stream,MaybeExpectedError",
     [
         (
-            '{"my_str":"foo","my_int":42,"my_float":3.14,"my_bool":true,"my_none":null}',
+            '{"key_str":"foo","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"bar","key_nested":{"key_str":"nested_value"}}',
             None,
         ),
         (
-            '{"my_str":"foo","my_float":3.14,"my_bool":true,"my_none":null}',
+            '{"key_str":"foo","key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"bar","key_nested":{"key_str":"nested_value"}}',
             None,
         ),
         (
-            '{"my_str":"foo","my_float":3.14,"my_none":null}',
+            '{"key_str":"foo","key_float":3.14,"key_none":null,"key_stream":"bar","key_nested":{"key_str":"nested_value"}}',
             None,
         ),
         (
-            '{"my_str":"foo","my_float":3.14}',
+            '{"key_str":"foo","key_float":3.14,"key_stream":"bar","key_nested":{"key_str":"nested_value"}}',
             None,
         ),
         (
-            '{"my_float":3.14}',
-            NotAllPropertiesSetError,
+            '{"key_str":"foo","key_float":3.14,"key_stream":"bar","key_nested":null}',
+            None,
         ),
         (
-            '{"my_str":"foo"}',
-            NotAllPropertiesSetError,
+            '{"key_str":"foo","key_float":3.14,"key_stream":"bar"}',
+            None,
+        ),
+        (
+            '{"key_float":3.14}',
+            NotAllObjectPropertiesSetError,
+        ),
+        (
+            '{"key_str":"foo"}',
+            NotAllObjectPropertiesSetError,
         ),
     ],
 )
@@ -591,15 +600,27 @@ async def test_json_demux__primitives__partial_streams(
     stream: str,
     MaybeExpectedError: Type[Exception] | None,
 ):
-    class SPrimitives(JMux):
-        my_str: AwaitableValue[str]
-        my_int: AwaitableValue[int | NoneType]
-        my_float: AwaitableValue[float]
-        my_bool: AwaitableValue[bool | NoneType]
-        my_none: AwaitableValue[NoneType]
+    class SObject(JMux):
+        class SNested(JMux):
+            key_str: AwaitableValue[str]
+
+        key_str: AwaitableValue[str]
+        key_int: AwaitableValue[int | NoneType]
+        key_float: AwaitableValue[float]
+        key_bool: AwaitableValue[bool | NoneType]
+        key_none: AwaitableValue[NoneType]
+        key_stream: StreamableValues[str]
+        key_nested: AwaitableValue[SNested | NoneType]
+
+        arr_str: StreamableValues[str]
+        arr_int: StreamableValues[int]
+        arr_float: StreamableValues[float]
+        arr_bool: StreamableValues[bool]
+        arr_none: StreamableValues[NoneType]
+        arr_nested: StreamableValues[SNested]
 
     llm_stream = AsyncStreamGenerator(stream)
-    s_primitives = SPrimitives()
+    s_primitives = SObject()
 
     my_str: Optional[str] = None
     my_int: Optional[int] = None
@@ -610,35 +631,35 @@ async def test_json_demux__primitives__partial_streams(
 
     async def consume_str():
         nonlocal my_str
-        my_str = await s_primitives.my_str
+        my_str = await s_primitives.key_str
         op = f"[str] received: {my_str}"
         log_emit(op)
         operation_list.append(op)
 
     async def consume_int():
         nonlocal my_int
-        my_int = await s_primitives.my_int
+        my_int = await s_primitives.key_int
         op = f"[int] received: {my_int}"
         log_emit(op)
         operation_list.append(op)
 
     async def consume_float():
         nonlocal my_float
-        my_float = await s_primitives.my_float
+        my_float = await s_primitives.key_float
         op = f"[float] received: {my_float}"
         log_emit(op)
         operation_list.append(op)
 
     async def consume_bool():
         nonlocal my_bool
-        my_bool = await s_primitives.my_bool
+        my_bool = await s_primitives.key_bool
         op = f"[bool] received: {my_bool}"
         log_emit(op)
         operation_list.append(op)
 
     async def consume_none():
         nonlocal my_none
-        my_none = await s_primitives.my_none
+        my_none = await s_primitives.key_none
         op = f"[none] received: {my_none}"
         log_emit(op)
         operation_list.append(op)
@@ -680,11 +701,11 @@ async def test_json_demux__primitives__partial_streams(
         )
         parsed_json = json.loads(stream)
 
-        assert my_str == parsed_json.get("my_str", None)
-        assert my_int == parsed_json.get("my_int", None)
-        assert my_float == parsed_json.get("my_float", None)
-        assert my_bool == parsed_json.get("my_bool", None)
-        assert my_none == parsed_json.get("my_none", None)
+        assert my_str == parsed_json.get("key_str", None)
+        assert my_int == parsed_json.get("key_int", None)
+        assert my_float == parsed_json.get("key_float", None)
+        assert my_bool == parsed_json.get("key_bool", None)
+        assert my_none == parsed_json.get("key_none", None)
 
 
 @pytest.mark.parametrize(
@@ -1291,6 +1312,7 @@ async def test_json_demux__parse_correct_stream__assert_state(
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{"key_str":3', UnexpectedCharacterError),
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{"key_str":', None),
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]}', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]}}', ObjectAlreadyClosedError),
     ],
 )
 # fmt: on

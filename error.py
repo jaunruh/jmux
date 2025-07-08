@@ -59,13 +59,20 @@ class SinkClosedError(Exception):
         self.message = message
 
 
-class NotAllPropertiesSetError(Exception):
+class NotAllObjectPropertiesSetError(Exception):
     def __init__(self, message: str | None = None) -> None:
         super().__init__(
             "Not all properties were set before closing the sink respective stream"
             + (f": {message}" if message else "")
         )
-        self.message = message
+
+
+class ObjectAlreadyClosedError(Exception):
+    def __init__(self, object_name: str, message: str | None = None) -> None:
+        super().__init__(
+            f"Object '{object_name}' is already closed"
+            + (f": {message}" if message else "")
+        )
 
 
 class UnexpectedCharacterError(Exception):

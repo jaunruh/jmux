@@ -16,8 +16,9 @@ from jmux.error import (
     EmptyKeyError,
     MissingAttributeError,
     NoCurrentSinkError,
-    NotAllPropertiesSetError,
+    NotAllObjectPropertiesSetError,
     NothingEmittedError,
+    ObjectAlreadyClosedError,
     ParsePrimitiveError,
     TypeEmitError,
     UnexpectedAttributeTypeError,
@@ -193,6 +194,11 @@ class JMux(ABC):
                         self._pda.state,
                         "JSON must start with '{' character.",
                     )
+            elif self._pda.state == "end":
+                raise ObjectAlreadyClosedError(
+                    object_name=self.__class__.__name__,
+                    message=f"Cannot feed more characters to closed JMux object, got '{ch}'",
+                )
 
         # CONTEXT: Root
         if self._pda.top == "$":
@@ -498,7 +504,7 @@ class JMux(ABC):
             try:
                 await self._sink.ensure_closed()
             except NothingEmittedError as e:
-                raise NotAllPropertiesSetError(
+                raise NotAllObjectPropertiesSetError(
                     f"Unable to finalize. Property '{attr_name}' was not set before closing the JMux instance."
                 ) from e
 
