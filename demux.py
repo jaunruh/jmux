@@ -16,6 +16,8 @@ from jmux.error import (
     EmptyKeyError,
     MissingAttributeError,
     NoCurrentSinkError,
+    NotAllPropertiesSetError,
+    NothingEmittedError,
     ParsePrimitiveError,
     TypeEmitError,
     UnexpectedAttributeTypeError,
@@ -119,6 +121,11 @@ class Sink[T: Emittable]:
         if self._current_sink is None:
             raise NoCurrentSinkError()
         await self._current_sink.close()
+
+    async def ensure_closed(self) -> None:
+        if self._current_sink is None:
+            raise NoCurrentSinkError()
+        await self._current_sink.ensure_closed()
 
     async def create_and_emit_nested(self) -> None:
         if self._current_sink is None:
@@ -282,6 +289,8 @@ class JMux(ABC):
                     await self._sink.close()
                     self._decoder.reset()
                     self._pda.set_state("expect_key")
+                    if ch == "}":
+                        await self._finalize()
                     return
 
             if self._pda.state == "expect_comma_or_eoc":
@@ -291,8 +300,7 @@ class JMux(ABC):
                     self._pda.set_state("expect_key")
                     return
                 elif ch == "}":
-                    self._pda.pop()
-                    self._pda.set_state("end")
+                    await self._finalize()
                     return
                 else:
                     raise UnexpectedCharacterError(
@@ -482,6 +490,20 @@ class JMux(ABC):
         await self._sink.close()
         self._pda.pop()
         self._pda.set_state(new_state)
+
+    async def _finalize(self) -> None:
+        type_hints = get_type_hints(self.__class__)
+        for attr_name, _ in type_hints.items():
+            self._sink.set_current(attr_name)
+            try:
+                await self._sink.ensure_closed()
+            except NothingEmittedError as e:
+                raise NotAllPropertiesSetError(
+                    f"Unable to finalize. Property '{attr_name}' was not set before closing the JMux instance."
+                ) from e
+
+        self._pda.pop()
+        self._pda.set_state("end")
 
     def _assert_primitive_character_allowed_in_state(self, ch: str) -> None:
         if self._pda.state == "parsing_integer":

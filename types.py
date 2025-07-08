@@ -75,6 +75,10 @@ class IAsyncSink[T](Protocol):
         """Close the sink."""
         ...
 
+    async def ensure_closed(self):
+        """Ensure the sink is closed."""
+        ...
+
     def get_current(self) -> T:
         """Get the current value from the sink."""
         ...
@@ -109,6 +113,11 @@ class StreamableValues[T](UnderlyingGenericMixin[T]):
             )
         self._closed = True
         await self._queue.put(None)
+
+    async def ensure_closed(self):
+        if self._closed:
+            return
+        await self.close()
 
     def get_current(self) -> T:
         if self._last_item is None:
@@ -155,6 +164,11 @@ class AwaitableValue[T](UnderlyingGenericMixin[T]):
                 "Trying to close non-NoneType AwaitableValue without a value."
             )
         self._is_closed = True
+
+    async def ensure_closed(self):
+        if self._is_closed:
+            return
+        await self.close()
 
     def get_current(self) -> T:
         if not self._value:

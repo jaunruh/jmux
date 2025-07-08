@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from asyncio import gather
+from asyncio import gather, wait_for
 from types import NoneType
 from typing import List, Optional, Type
 
@@ -10,6 +10,7 @@ from jmux.demux import JMux, Mode, State
 from jmux.error import (
     EmptyKeyError,
     MissingAttributeError,
+    NotAllPropertiesSetError,
     ParsePrimitiveError,
     UnexpectedCharacterError,
 )
@@ -37,321 +38,6 @@ LOG_EMITS = os.environ.get("LOG_EMITS", "0") == "1"
 def log_emit(message: str):
     if LOG_EMITS:
         print(message)
-
-
-# fmt: off
-@pytest.mark.parametrize(
-    "stream,expected_stack,expected_state",
-    [
-        ("", [], "start"),
-        ("{", ["$"], "expect_key"),
-        ("{ ", ["$"], "expect_key"),
-        ('{"', ["$"], "parsing_key"),
-        ('{"key_', ["$"], "parsing_key"),
-        ('{"key_str', ["$"], "parsing_key"),
-        ('{"key_str"', ["$"], "expect_colon"),
-        ('{"key_str":', ["$"], "expect_value"),
-        ('{"key_str": ', ["$"], "expect_value"),
-        ('{"key_str": \t\n', ["$"], "expect_value"),
-        ('{"key_str": "', ["$"], "parsing_string"),
-        ('{"key_str": "val', ["$"], "parsing_string"),
-        ('{"key_str": "val"', ["$"], "expect_comma_or_eoc"),
-        ('{"key_str": "val" \t\n', ["$"], "expect_comma_or_eoc"),
-        ('{"key_str": "val",', ["$"], "expect_key"),
-        ('{"key_str": "val","key_int', ["$"], "parsing_key"),
-        ('{"key_str": "val","key_int"', ["$"], "expect_colon"),
-        ('{"key_str": "val","key_int":', ["$"], "expect_value"),
-        ('{"key_str": "val","key_int": \t\n', ["$"], "expect_value"),
-        ('{"key_str": "val","key_int":4', ["$"], "parsing_integer"),
-        ('{"key_str": "val","key_int":42', ["$"], "parsing_integer"),
-        ('{"key_str": "val","key_int":42,', ["$"], "expect_key"),
-        ('{"key_str": "val","key_int":42,"', ["$"], "parsing_key"),
-        ('{"key_str": "val","key_int":42,"key_float"', ["$"], "expect_colon"),
-        ('{"key_str": "val","key_int":42,"key_float":', ["$"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":', ["$"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14', ["$"], "parsing_float"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,', ["$"], "expect_key"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":', ["$"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":t', ["$"], "parsing_boolean"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true', ["$"], "parsing_boolean"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":n', ["$"], "parsing_null"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', ["$"], "expect_key"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', ["$"], "expect_key"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream', ["$"], "parsing_key"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream', ["$"], "parsing_string"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":', ["$"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{', ["$", "object"], "parsing_object"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"', ["$", "object"], "parsing_object"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str"', ["$", "object"], "parsing_object"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"', ["$", "object"], "parsing_object"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"}', ["$"], "expect_comma_or_eoc"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},', ["$"], "expect_key"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":', ["$"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":[', ["$", "array"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["', ["$", "array"], "parsing_string"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1"', ["$", "array"], "expect_comma_or_eoc"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1" \t\n', ["$", "array"], "expect_comma_or_eoc"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1",', ["$", "array"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1", \t\n', ["$", "array"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2",', ["$", "array"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3', ["$", "array"], "parsing_string"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"', ["$", "array"], "expect_comma_or_eoc"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"]', ["$"], "expect_comma_or_eoc"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],', ["$"], "expect_key"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[', ["$", "array"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42', ["$", "array"], "parsing_integer"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,', ["$", "array"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3', ["$", "array"], "parsing_float"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14', ["$", "array"], "parsing_float"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,', ["$", "array"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4]', ["$"], "expect_comma_or_eoc"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true', ["$", "array"], "parsing_boolean"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false', ["$", "array"], "parsing_boolean"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true]', ["$"], "expect_comma_or_eoc"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,nul', ["$", "array"], "parsing_null"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null]', ["$"], "expect_comma_or_eoc"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{', ["$", "array", "object"], "parsing_object"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_s', ["$", "array", "object"], "parsing_object"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"}', ["$", "array"], "expect_comma_or_eoc"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},', ["$", "array"], "expect_value"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nes', ["$", "array", "object"], "parsing_object"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}', ["$", "array"], "expect_comma_or_eoc"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]', ["$"], "expect_comma_or_eoc"),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]}', [], "end"),
-    ],
-)
-# fmt: on
-@pytest.mark.anyio
-async def test_json_demux__parse_correct_stream__assert_state(
-    stream: str, expected_stack: List[Mode], expected_state: State
-):
-    class SObject(JMux):
-        class SNested(JMux):
-            key_str: AwaitableValue[str]
-
-        key_str: AwaitableValue[str]
-        key_int: AwaitableValue[int]
-        key_float: AwaitableValue[float]
-        key_bool: AwaitableValue[bool]
-        key_none: AwaitableValue[NoneType]
-        key_stream: StreamableValues[str]
-        key_nested: AwaitableValue[SNested]
-
-        arr_str: StreamableValues[str]
-        arr_int: StreamableValues[int]
-        arr_float: StreamableValues[float]
-        arr_bool: StreamableValues[bool]
-        arr_none: StreamableValues[NoneType]
-        arr_nested: StreamableValues[SNested]
-
-    s_object = SObject()
-
-    for ch in stream:
-        await s_object.feed_char(ch)
-
-    assert s_object._pda.state == expected_state
-    assert s_object._pda._stack == expected_stack
-
-
-# fmt: off
-@pytest.mark.parametrize(
-    "stream,maybe_expected_error",
-    [
-        ("b", UnexpectedCharacterError),
-        ("{", None),
-        ("{p", UnexpectedCharacterError),
-        ('{"', None),
-        ('{""', EmptyKeyError),
-        ('{"no_actual_key"', MissingAttributeError),
-        ('{"key_str"', None),
-        ('{"key_str": ""', None),
-        ('{"key_str": "val","key_int":4p', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":4t', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":420', None),
-        ('{"key_str": "val","key_int":-420', None),
-        ('{"key_str": "val","key_int":-4.20', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":1e+', None),
-        ('{"key_str": "val","key_int":42,"key_float":0', None),
-        ('{"key_str": "val","key_int":42,"key_float":p', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":1e+,', ParsePrimitiveError),
-        ('{"key_str": "val","key_int":42,"key_float":-3.14e10,', None),
-        ('{"key_str": "val","key_int":42,"key_float":-2.5E3,', None),
-        ('{"key_str": "val","key_int":42,"key_float":1E+10,', None),
-        ('{"key_str": "val","key_int":42,"key_float":NaN', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":Infinity', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":-', None),
-        ('{"key_str": "val","key_int":42,"key_float":+', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":-1', None),
-        ('{"key_str": "val","key_int":42,"key_float":--1', None),
-        ('{"key_str": "val","key_int":42,"key_float":--1,', ParsePrimitiveError),
-        ('{"key_str": "val","key_int":42,"key_float":.', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":1.', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":t', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":T', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":trub', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":tf', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":trueee', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":f', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":F', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":ft', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":falsb', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":n', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":nope', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":nulll', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":p', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":n', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":4', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{p', UnexpectedCharacterError), # Means all recursive calls throw errors as expected
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":{', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":p', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":[[', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":[]', None), # Allow empty arrays
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":[nu', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1",}', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":4,', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[4.', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42,', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42,[', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[-42,', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42,+43]', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42,-43]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":3', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":{', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":"', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3k', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[0', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14,314]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3,1,4]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14,31.4]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":"', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":t', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":r', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true,false,true]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":n', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":f', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[]', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[3', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[p', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{p', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{"key_str":3', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{"key_str":', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]}', None),
-    ],
-)
-# fmt: on
-@pytest.mark.anyio
-async def test_json_demux__parse_incorrect_stream__assert_error(
-    stream: str, maybe_expected_error: Type[Exception] | None
-):
-    class SObject(JMux):
-        class SNested(JMux):
-            key_str: AwaitableValue[str]
-
-        key_str: AwaitableValue[str]
-        key_int: AwaitableValue[int]
-        key_float: AwaitableValue[float]
-        key_bool: AwaitableValue[bool]
-        key_none: AwaitableValue[NoneType]
-        key_stream: StreamableValues[str]
-        key_nested: AwaitableValue[SNested]
-
-        arr_str: StreamableValues[str]
-        arr_int: StreamableValues[int]
-        arr_float: StreamableValues[float]
-        arr_bool: StreamableValues[bool]
-        arr_none: StreamableValues[NoneType]
-        arr_nested: StreamableValues[SNested]
-
-    s_object = SObject()
-
-    if maybe_expected_error:
-        with pytest.raises(maybe_expected_error):
-            for ch in stream:
-                await s_object.feed_char(ch)
-    else:
-        for ch in stream:
-            await s_object.feed_char(ch)
-
-
-
-# fmt: off
-@pytest.mark.parametrize(
-    "stream,maybe_expected_error",
-    [
-        ("b", UnexpectedCharacterError),
-        ("{", None),
-        ("{p", UnexpectedCharacterError),
-        ('{"', None),
-        ('{""', EmptyKeyError),
-        ('{"no_actual_key"', MissingAttributeError),
-        ('{"key_str"', None),
-        ('{"key_str": ""', None),
-        ('{"key_str": n', None),
-        ('{"key_str": null', None),
-        ('{"key_str": "val","key_int":4p', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":n', None),
-        ('{"key_str": "val","key_int":null', None),
-        ('{"key_str": "val","key_int":null,', None),
-        ('{"key_str": "val","key_int":420', None),
-        ('{"key_str": "val","key_int":-420', None),
-        ('{"key_str": "val","key_int":42,"key_float":0', None),
-        ('{"key_str": "val","key_int":42,"key_float":n', None),
-        ('{"key_str": "val","key_int":42,"key_float":null', None),
-        ('{"key_str": "val","key_int":42,"key_float":null,', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":t', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":n', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":null', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":null,', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":n', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":null', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":null,', None),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{p', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{n', UnexpectedCharacterError),
-        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{"key_str":"nested"},', None),
-    ],
-)
-# fmt: on
-@pytest.mark.anyio
-async def test_json_demux__parse_incorrect_stream_with_optionals__assert_error(
-    stream: str, maybe_expected_error: Type[Exception] | None
-):
-    class SObject(JMux):
-        class SNested(JMux):
-            key_str: AwaitableValue[str]
-
-        key_str: AwaitableValue[str | NoneType]
-        key_int: AwaitableValue[int | NoneType]
-        key_float: AwaitableValue[float | NoneType]
-        key_bool: AwaitableValue[bool | NoneType]
-        key_nested: AwaitableValue[SNested | NoneType]
-
-    s_object = SObject()
-
-    if maybe_expected_error:
-        with pytest.raises(maybe_expected_error):
-            for ch in stream:
-                await s_object.feed_char(ch)
-    else:
-        for ch in stream:
-            await s_object.feed_char(ch)
 
 
 @pytest.mark.parametrize(
@@ -863,6 +549,144 @@ async def test_json_demux__primitives(stream: str, expected_operations: List[str
     assert operation_list == expected_operations
 
 
+class SPrimitivesPartial1(JMux):
+    my_str: AwaitableValue[str]
+    my_int: AwaitableValue[int | NoneType]
+    my_float: AwaitableValue[float]
+    my_bool: AwaitableValue[bool | NoneType]
+    my_none: AwaitableValue[NoneType]
+
+
+@pytest.mark.parametrize(
+    "stream,MaybeExpectedError",
+    [
+        (
+            '{"my_str":"foo","my_int":42,"my_float":3.14,"my_bool":true,"my_none":null}',
+            None,
+        ),
+        (
+            '{"my_str":"foo","my_float":3.14,"my_bool":true,"my_none":null}',
+            None,
+        ),
+        (
+            '{"my_str":"foo","my_float":3.14,"my_none":null}',
+            None,
+        ),
+        (
+            '{"my_str":"foo","my_float":3.14}',
+            None,
+        ),
+        (
+            '{"my_float":3.14}',
+            NotAllPropertiesSetError,
+        ),
+        (
+            '{"my_str":"foo"}',
+            NotAllPropertiesSetError,
+        ),
+    ],
+)
+@pytest.mark.anyio
+async def test_json_demux__primitives__partial_streams(
+    stream: str,
+    MaybeExpectedError: Type[Exception] | None,
+):
+    class SPrimitives(JMux):
+        my_str: AwaitableValue[str]
+        my_int: AwaitableValue[int | NoneType]
+        my_float: AwaitableValue[float]
+        my_bool: AwaitableValue[bool | NoneType]
+        my_none: AwaitableValue[NoneType]
+
+    llm_stream = AsyncStreamGenerator(stream)
+    s_primitives = SPrimitives()
+
+    my_str: Optional[str] = None
+    my_int: Optional[int] = None
+    my_float: Optional[float] = None
+    my_bool: Optional[bool] = None
+    my_none: Optional[NoneType] = None
+    operation_list = []
+
+    async def consume_str():
+        nonlocal my_str
+        my_str = await s_primitives.my_str
+        op = f"[str] received: {my_str}"
+        log_emit(op)
+        operation_list.append(op)
+
+    async def consume_int():
+        nonlocal my_int
+        my_int = await s_primitives.my_int
+        op = f"[int] received: {my_int}"
+        log_emit(op)
+        operation_list.append(op)
+
+    async def consume_float():
+        nonlocal my_float
+        my_float = await s_primitives.my_float
+        op = f"[float] received: {my_float}"
+        log_emit(op)
+        operation_list.append(op)
+
+    async def consume_bool():
+        nonlocal my_bool
+        my_bool = await s_primitives.my_bool
+        op = f"[bool] received: {my_bool}"
+        log_emit(op)
+        operation_list.append(op)
+
+    async def consume_none():
+        nonlocal my_none
+        my_none = await s_primitives.my_none
+        op = f"[none] received: {my_none}"
+        log_emit(op)
+        operation_list.append(op)
+
+    async def produce():
+        async for ch in llm_stream:
+            op = f"[producer] sending: {ch}"
+            log_emit(op)
+            operation_list.append(op)
+            await s_primitives.feed_char(ch)
+            # Yield control to allow other tasks to run
+            # Necessary in the tests only, for API calls this is not needed
+            await asyncio.sleep(0)
+
+    if MaybeExpectedError:
+        with pytest.raises(MaybeExpectedError):
+            await wait_for(
+                fut=gather(
+                    produce(),
+                    consume_str(),
+                    consume_int(),
+                    consume_float(),
+                    consume_bool(),
+                    consume_none(),
+                ),
+                timeout=1000000,
+            )
+    else:
+        await wait_for(
+            fut=gather(
+                produce(),
+                consume_str(),
+                consume_int(),
+                consume_float(),
+                consume_bool(),
+                consume_none(),
+            ),
+            timeout=1000000,
+        )
+        parsed_json = json.loads(stream)
+
+        assert my_str == parsed_json.get("my_str", None)
+        assert my_int == parsed_json.get("my_int", None)
+        assert my_float == parsed_json.get("my_float", None)
+        assert my_bool == parsed_json.get("my_bool", None)
+        assert my_none == parsed_json.get("my_none", None)
+
+
 @pytest.mark.parametrize(
     "stream,expected_operations",
     [
@@ -1252,3 +1076,323 @@ async def test_json_demux__object_with_array_of_primitives(
     assert len(arr_str) == 2
     assert arr_str == parsed_json["arr_str"]
     assert operation_list == expected_operations
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    "stream,expected_stack,expected_state",
+    [
+        ("", [], "start"),
+        ("{", ["$"], "expect_key"),
+        ("{ ", ["$"], "expect_key"),
+        ('{"', ["$"], "parsing_key"),
+        ('{"key_', ["$"], "parsing_key"),
+        ('{"key_str', ["$"], "parsing_key"),
+        ('{"key_str"', ["$"], "expect_colon"),
+        ('{"key_str":', ["$"], "expect_value"),
+        ('{"key_str": ', ["$"], "expect_value"),
+        ('{"key_str": \t\n', ["$"], "expect_value"),
+        ('{"key_str": "', ["$"], "parsing_string"),
+        ('{"key_str": "val', ["$"], "parsing_string"),
+        ('{"key_str": "val"', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val" \t\n', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val",', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int', ["$"], "parsing_key"),
+        ('{"key_str": "val","key_int"', ["$"], "expect_colon"),
+        ('{"key_str": "val","key_int":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int": \t\n', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":4', ["$"], "parsing_integer"),
+        ('{"key_str": "val","key_int":42', ["$"], "parsing_integer"),
+        ('{"key_str": "val","key_int":42,', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"', ["$"], "parsing_key"),
+        ('{"key_str": "val","key_int":42,"key_float"', ["$"], "expect_colon"),
+        ('{"key_str": "val","key_int":42,"key_float":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14', ["$"], "parsing_float"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":t', ["$"], "parsing_boolean"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true', ["$"], "parsing_boolean"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":n', ["$"], "parsing_null"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream', ["$"], "parsing_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream', ["$"], "parsing_string"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{', ["$", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"', ["$", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str"', ["$", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"', ["$", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"}', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":', ["$"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":[', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["', ["$", "array"], "parsing_string"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1"', ["$", "array"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1" \t\n', ["$", "array"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1",', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1", \t\n', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2",', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3', ["$", "array"], "parsing_string"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"', ["$", "array"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"]', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],', ["$"], "expect_key"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42', ["$", "array"], "parsing_integer"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3', ["$", "array"], "parsing_float"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14', ["$", "array"], "parsing_float"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4]', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true', ["$", "array"], "parsing_boolean"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false', ["$", "array"], "parsing_boolean"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true]', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,nul', ["$", "array"], "parsing_null"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null]', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{', ["$", "array", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_s', ["$", "array", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"}', ["$", "array"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},', ["$", "array"], "expect_value"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nes', ["$", "array", "object"], "parsing_object"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}', ["$", "array"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]', ["$"], "expect_comma_or_eoc"),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]}', [], "end"),
+    ],
+)
+# fmt: on
+@pytest.mark.anyio
+async def test_json_demux__parse_correct_stream__assert_state(
+    stream: str, expected_stack: List[Mode], expected_state: State
+):
+    class SObject(JMux):
+        class SNested(JMux):
+            key_str: AwaitableValue[str]
+
+        key_str: AwaitableValue[str]
+        key_int: AwaitableValue[int]
+        key_float: AwaitableValue[float]
+        key_bool: AwaitableValue[bool]
+        key_none: AwaitableValue[NoneType]
+        key_stream: StreamableValues[str]
+        key_nested: AwaitableValue[SNested]
+
+        arr_str: StreamableValues[str]
+        arr_int: StreamableValues[int]
+        arr_float: StreamableValues[float]
+        arr_bool: StreamableValues[bool]
+        arr_none: StreamableValues[NoneType]
+        arr_nested: StreamableValues[SNested]
+
+    s_object = SObject()
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert s_object._pda.state == expected_state
+    assert s_object._pda._stack == expected_stack
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    "stream,MaybeExpectedError",
+    [
+        ("b", UnexpectedCharacterError),
+        ("{", None),
+        ("{p", UnexpectedCharacterError),
+        ('{"', None),
+        ('{""', EmptyKeyError),
+        ('{"no_actual_key"', MissingAttributeError),
+        ('{"key_str"', None),
+        ('{"key_str": ""', None),
+        ('{"key_str": "val","key_int":4p', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":4t', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":420', None),
+        ('{"key_str": "val","key_int":-420', None),
+        ('{"key_str": "val","key_int":-4.20', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":1e+', None),
+        ('{"key_str": "val","key_int":42,"key_float":0', None),
+        ('{"key_str": "val","key_int":42,"key_float":p', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":1e+,', ParsePrimitiveError),
+        ('{"key_str": "val","key_int":42,"key_float":-3.14e10,', None),
+        ('{"key_str": "val","key_int":42,"key_float":-2.5E3,', None),
+        ('{"key_str": "val","key_int":42,"key_float":1E+10,', None),
+        ('{"key_str": "val","key_int":42,"key_float":NaN', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":Infinity', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":-', None),
+        ('{"key_str": "val","key_int":42,"key_float":+', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":-1', None),
+        ('{"key_str": "val","key_int":42,"key_float":--1', None),
+        ('{"key_str": "val","key_int":42,"key_float":--1,', ParsePrimitiveError),
+        ('{"key_str": "val","key_int":42,"key_float":.', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":1.', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":t', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":T', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":trub', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":tf', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":trueee', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":f', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":F', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":ft', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":falsb', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":n', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":nope', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":nulll', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":p', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":n', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":4', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{p', UnexpectedCharacterError), # Means all recursive calls throw errors as expected
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":{', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":p', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":[[', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":[]', None), # Allow empty arrays
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":[nu', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1",}', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":4,', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[4.', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42,[', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[-42,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42,+43]', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42,-43]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":3', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":{', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":"', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3k', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[0', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14,314]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3,1,4]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14,31.4]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":"', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":t', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":r', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true,false,true]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":n', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":f', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[]', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[3', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[p', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{p', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{"key_str":3', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{"key_str":', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]}', None),
+    ],
+)
+# fmt: on
+@pytest.mark.anyio
+async def test_json_demux__parse_incorrect_stream__assert_error(
+    stream: str, MaybeExpectedError: Type[Exception] | None
+):
+    class SObject(JMux):
+        class SNested(JMux):
+            key_str: AwaitableValue[str]
+
+        key_str: AwaitableValue[str]
+        key_int: AwaitableValue[int]
+        key_float: AwaitableValue[float]
+        key_bool: AwaitableValue[bool]
+        key_none: AwaitableValue[NoneType]
+        key_stream: StreamableValues[str]
+        key_nested: AwaitableValue[SNested]
+
+        arr_str: StreamableValues[str]
+        arr_int: StreamableValues[int]
+        arr_float: StreamableValues[float]
+        arr_bool: StreamableValues[bool]
+        arr_none: StreamableValues[NoneType]
+        arr_nested: StreamableValues[SNested]
+
+    s_object = SObject()
+
+    if MaybeExpectedError:
+        with pytest.raises(MaybeExpectedError):
+            for ch in stream:
+                await s_object.feed_char(ch)
+    else:
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+
+# fmt: off
+@pytest.mark.parametrize(
+    "stream,MaybeExpectedError",
+    [
+        ("b", UnexpectedCharacterError),
+        ("{", None),
+        ("{p", UnexpectedCharacterError),
+        ('{"', None),
+        ('{""', EmptyKeyError),
+        ('{"no_actual_key"', MissingAttributeError),
+        ('{"key_str"', None),
+        ('{"key_str": ""', None),
+        ('{"key_str": n', None),
+        ('{"key_str": t', UnexpectedCharacterError),
+        ('{"key_str": null', None),
+        ('{"key_str": "val","key_int":4p', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":n', None),
+        ('{"key_str": "val","key_int":r', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":null', None),
+        ('{"key_str": "val","key_int":null,', None),
+        ('{"key_str": "val","key_int":420', None),
+        ('{"key_str": "val","key_int":-420', None),
+        ('{"key_str": "val","key_int":42,"key_float":0', None),
+        ('{"key_str": "val","key_int":42,"key_float":n', None),
+        ('{"key_str": "val","key_int":42,"key_float":l', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":null', None),
+        ('{"key_str": "val","key_int":42,"key_float":null,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":t', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":r', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":n', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":null', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":null,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":n', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":k', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":null', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":null,', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{p', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{n', UnexpectedCharacterError),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_nested":{"key_str":"nested"},', None),
+    ],
+)
+# fmt: on
+@pytest.mark.anyio
+async def test_json_demux__parse_incorrect_stream_with_optionals__assert_error(
+    stream: str, MaybeExpectedError: Type[Exception] | None
+):
+    class SObject(JMux):
+        class SNested(JMux):
+            key_str: AwaitableValue[str]
+
+        key_str: AwaitableValue[str | NoneType]
+        key_int: AwaitableValue[int | NoneType]
+        key_float: AwaitableValue[float | NoneType]
+        key_bool: AwaitableValue[bool | NoneType]
+        key_nested: AwaitableValue[SNested | NoneType]
+
+    s_object = SObject()
+
+    if MaybeExpectedError:
+        with pytest.raises(MaybeExpectedError):
+            for ch in stream:
+                await s_object.feed_char(ch)
+    else:
+        for ch in stream:
+            await s_object.feed_char(ch)
