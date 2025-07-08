@@ -3,6 +3,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Type,
     get_args,
     get_origin,
     get_type_hints,
@@ -72,7 +73,7 @@ class Sink[T: Emittable]:
         return self._current_sink.get_sink_type()
 
     @property
-    def current_underlying_generic(self) -> type[T]:
+    def current_underlying_generic(self) -> Type[T]:
         if self._current_sink is None:
             raise NoCurrentSinkError()
         return self._current_sink.get_underlying_generic()

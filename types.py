@@ -1,5 +1,14 @@
 from asyncio import Event, Queue
-from typing import AsyncGenerator, Literal, Protocol, Type, cast, runtime_checkable
+from types import NoneType, UnionType
+from typing import (
+    AsyncGenerator,
+    Literal,
+    Protocol,
+    Type,
+    cast,
+    get_args,
+    runtime_checkable,
+)
 
 type SinkType = Literal["StreamableValues", "AwaitableValue"]
 
@@ -13,12 +22,29 @@ class UnderlyingGenericMixin[T]:
             )
 
         Origin = getattr(self, "__orig_class__")
-        if len(Origin.__args__) != 1:
+        type_args = get_args(Origin)
+        if len(type_args) != 1:
             raise TypeError(
-                f"AwaitableValue must be initialized with a single generic type, got {Origin.__args__}."
+                f"AwaitableValue must be initialized with a single generic type, got {type_args}."
             )
-        Generic: Type[T] = Origin.__args__[0]
-        return Generic
+        Generic: Type[T] = type_args[0]
+        if Generic is None:
+            raise TypeError("Generic type not defined.")
+        if isinstance(Generic, Type):
+            return Generic
+        elif isinstance(Generic, UnionType):
+            type_set = set(g for g in get_args(Generic) if isinstance(g, type))
+            if len(type_set) != 2:
+                raise TypeError(
+                    f"Union type must have exactly two types in its union, got {get_args(Generic)}."
+                )
+            if NoneType not in get_args(Generic):
+                raise TypeError(
+                    "Union type must include NoneType if it is used as a generic argument."
+                )
+            return cast(Type[T], Generic)
+        else:
+            raise TypeError("Generic argument is not a type or tuple of types.")
 
 
 @runtime_checkable
