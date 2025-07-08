@@ -1,5 +1,5 @@
 from types import NoneType
-from typing import Type
+from typing import Set, Type
 
 import pytest
 from jmux.demux import JMux
@@ -11,7 +11,7 @@ class NestedObject(JMux):
 
 
 @pytest.mark.parametrize(
-    "TargetType,ExpectedType",
+    "TargetType,expected_set",
     [
         (AwaitableValue[int], {int}),
         (AwaitableValue[float], {float}),
@@ -31,12 +31,12 @@ class NestedObject(JMux):
     ],
 )
 def test_underlying_generic_mixin__get_underlying_generic__expected_set(
-    TargetType: Type[IAsyncSink], ExpectedType: Type
+    TargetType: Type[IAsyncSink], expected_set: Set[Type]
 ):
     target = TargetType()
     underlying_types = target.get_underlying_generics()
 
-    assert underlying_types == ExpectedType
+    assert underlying_types == expected_set
 
 
 @pytest.mark.parametrize(
