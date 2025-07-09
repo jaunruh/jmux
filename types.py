@@ -1,5 +1,5 @@
 from asyncio import Event, Queue
-from types import NoneType, UnionType
+from types import NoneType
 from typing import (
     AsyncGenerator,
     Literal,
@@ -7,11 +7,11 @@ from typing import (
     Set,
     Type,
     cast,
-    get_args,
     runtime_checkable,
 )
 
 from jmux.error import NothingEmittedError, SinkClosedError
+from jmux.helpers import extract_types_from_generic_alias
 
 type SinkType = Literal["StreamableValues", "AwaitableValue"]
 
@@ -25,29 +25,8 @@ class UnderlyingGenericMixin[T]:
             )
 
         Origin = getattr(self, "__orig_class__")
-        type_args = get_args(Origin)
-        if len(type_args) != 1:
-            raise TypeError(
-                f"AwaitableValue must be initialized with a single generic type, got {type_args}."
-            )
-        Generic: Type[T] = type_args[0]
-        if Generic is None:
-            raise TypeError("Generic type not defined.")
-        if isinstance(Generic, Type):
-            return {Generic}
-        elif isinstance(Generic, UnionType):
-            type_set = set(g for g in get_args(Generic) if isinstance(g, type))
-            if len(type_set) != 2:
-                raise TypeError(
-                    f"Union type must have exactly two types in its union, got {get_args(Generic)}."
-                )
-            if NoneType not in get_args(Generic):
-                raise TypeError(
-                    "Union type must include NoneType if it is used as a generic argument."
-                )
-            return type_set
-        else:
-            raise TypeError("Generic argument is not a type or tuple of types.")
+        _, type_set = extract_types_from_generic_alias(Origin)
+        return type_set
 
     def get_underlying_main_generic(self) -> Type[T]:
         underlying_generics = self.get_underlying_generics()

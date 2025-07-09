@@ -3,7 +3,11 @@ from typing import Set, Type
 
 import pytest
 from jmux.demux import JMux
-from jmux.types import AwaitableValue, IAsyncSink, StreamableValues
+from jmux.types import (
+    AwaitableValue,
+    IAsyncSink,
+    StreamableValues,
+)
 
 
 class NestedObject(JMux):

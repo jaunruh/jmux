@@ -27,6 +27,7 @@ from jmux.error import (
 from jmux.helpers import is_json_whitespace
 from jmux.pda import PushDownAutomata
 from jmux.types import IAsyncSink, SinkType
+from pydantic import BaseModel
 
 type Primitive = int | float | str | bool | None
 type Emittable = Primitive | "JMux"
@@ -176,6 +177,10 @@ class JMux(ABC):
                     f"Attribute '{attr_name}' must conform to protocol IAsyncSink, got {TargetType}."
                 )
             setattr(self, attr_name, target_instance)
+
+    @classmethod
+    def conforms_to(cls, pydantic_model: Type[BaseModel]) -> bool:
+        return False
 
     async def feed_char(self, ch: str) -> None:
         self._history.append(ch)
