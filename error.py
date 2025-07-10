@@ -75,6 +75,28 @@ class ObjectAlreadyClosedError(Exception):
         )
 
 
+class ObjectMissmatchedError(Exception):
+    def __init__(
+        self,
+        jmux_model: str,
+        pydantic_model: str,
+        attribute: str,
+        message: str | None = None,
+    ) -> None:
+        super().__init__(
+            f"JMux object '{jmux_model}' and '{pydantic_model}' are missmatched on attribute '{attribute}'"
+            + (f": {message}" if message else "")
+        )
+
+
+class ForbiddenTypeHintsError(Exception):
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            "Forbidden type hints used in object definition"
+            + (f": {message}" if message else "")
+        )
+
+
 class UnexpectedCharacterError(Exception):
     def __init__(
         self,
