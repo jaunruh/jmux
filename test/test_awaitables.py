@@ -2,12 +2,12 @@ from types import NoneType
 from typing import Set, Type
 
 import pytest
-from jmux.demux import JMux
-from jmux.types import (
+from jmux.awaitable import (
     AwaitableValue,
     IAsyncSink,
     StreamableValues,
 )
+from jmux.demux import JMux
 
 
 class NestedObject(JMux):

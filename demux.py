@@ -10,9 +10,7 @@ from typing import (
     get_type_hints,
 )
 
-from jmux.constants import PRIMITIVE_STATES
-from jmux.constants import Mode as M
-from jmux.constants import State as S
+from jmux.awaitable import AwaitableValue, IAsyncSink, SinkType, StreamableValues
 from jmux.decoder import StringDecoder
 from jmux.error import (
     EmptyKeyError,
@@ -34,7 +32,9 @@ from jmux.helpers import (
     is_json_whitespace,
 )
 from jmux.pda import PushDownAutomata
-from jmux.types import AwaitableValue, IAsyncSink, SinkType, StreamableValues
+from jmux.types import PRIMITIVE_STATES
+from jmux.types import Mode as M
+from jmux.types import State as S
 from pydantic import BaseModel
 
 type Primitive = int | float | str | bool | None

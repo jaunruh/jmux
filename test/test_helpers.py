@@ -2,13 +2,13 @@ from types import NoneType
 from typing import List, Set, Tuple, Type
 
 import pytest
-from jmux.demux import JMux
-from jmux.helpers import deconstruct_type, extract_types_from_generic_alias
-from jmux.types import (
+from jmux.awaitable import (
     AwaitableValue,
     StreamableValues,
     UnderlyingGenericMixin,
 )
+from jmux.demux import JMux
+from jmux.helpers import deconstruct_type, extract_types_from_generic_alias
 
 
 @pytest.mark.parametrize(

@@ -6,11 +6,11 @@ from types import NoneType
 from typing import List, Optional, Type
 
 import pytest
+from jmux.awaitable import AwaitableValue, StreamableValues
 from jmux.demux import JMux
 from jmux.error import (
     NotAllObjectPropertiesSetError,
 )
-from jmux.types import AwaitableValue, StreamableValues
 
 
 class AsyncStreamGenerator:

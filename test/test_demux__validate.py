@@ -1,7 +1,7 @@
 import pytest
+from jmux.awaitable import AwaitableValue, StreamableValues
 from jmux.demux import JMux
 from jmux.error import ObjectMissmatchedError
-from jmux.types import AwaitableValue, StreamableValues
 from pydantic import BaseModel
 
 

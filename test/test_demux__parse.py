@@ -2,7 +2,7 @@ from types import NoneType
 from typing import List, Type
 
 import pytest
-from jmux.constants import Mode, State
+from jmux.awaitable import AwaitableValue, StreamableValues
 from jmux.demux import JMux
 from jmux.error import (
     EmptyKeyError,
@@ -11,7 +11,7 @@ from jmux.error import (
     ParsePrimitiveError,
     UnexpectedCharacterError,
 )
-from jmux.types import AwaitableValue, StreamableValues
+from jmux.types import Mode, State
 
 
 # fmt: off
