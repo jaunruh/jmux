@@ -219,54 +219,21 @@ class JMux(ABC):
                 )
 
             if StreamableValues in jmux_main_type_set:
-                if len(jmux_subtype_set) != 1:
-                    raise ForbiddenTypeHintsError(
-                        message=f"StreamableValues must have exactly one underlying type, got {jmux_subtype_set}."
-                    )
-
-                if list in pydantic_main_type_set:
-                    NonNoneType = get_main_type(jmux_subtype_set)
-                    PydanticNonNoneType = get_main_type(pydantic_subtype_set)
-                    if issubclass(NonNoneType, JMux):
-                        NonNoneType.assert_conforms_to(PydanticNonNoneType)
-                        continue
-                    if jmux_subtype_set != pydantic_subtype_set:
-                        raise ObjectMissmatchedError(
-                            jmux_model=cls.__name__,
-                            pydantic_model=pydantic_model.__name__,
-                            attribute=attr_name,
-                            message=f"StreamableValues of type list with subtype {jmux_subtype_set} does not match pydantic model type: {pydantic_subtype_set}",
-                        )
-                elif str in pydantic_main_type_set:
-                    if jmux_subtype_set != pydantic_main_type_set:
-                        raise ObjectMissmatchedError(
-                            jmux_model=cls.__name__,
-                            pydantic_model=pydantic_model.__name__,
-                            attribute=attr_name,
-                            message=f"StreamableValues of type string does not match pydantic model type: {pydantic_main_type_set}",
-                        )
-                else:
-                    raise ForbiddenTypeHintsError(
-                        message="StreamableValues must be initialized with a sequence type."
-                    )
+                cls._assert_is_allowed_streamable_values(
+                    jmux_subtype_set,
+                    pydantic_subtype_set,
+                    pydantic_main_type_set,
+                    pydantic_model,
+                    attr_name,
+                )
             elif AwaitableValue in jmux_main_type_set:
-                if len(pydantic_subtype_set) > 0:
-                    raise ForbiddenTypeHintsError(
-                        message="Pydantic model cannot have subtype for AwaitableValue."
-                    )
-                NonNoneType = get_main_type(jmux_subtype_set)
-                PydanticNonNoneType = get_main_type(pydantic_main_type_set)
-                if issubclass(NonNoneType, JMux):
-                    NonNoneType.assert_conforms_to(PydanticNonNoneType)
-                    continue
-                if not jmux_subtype_set == pydantic_main_type_set:
-                    raise ObjectMissmatchedError(
-                        jmux_model=cls.__name__,
-                        pydantic_model=pydantic_model.__name__,
-                        attribute=attr_name,
-                        message=f"AwaitableValue with type {jmux_subtype_set} does not match pydantic model type: {pydantic_main_type_set}",
-                    )
-
+                cls._assert_is_allowed_awaitable_value(
+                    jmux_subtype_set,
+                    pydantic_subtype_set,
+                    pydantic_main_type_set,
+                    pydantic_model,
+                    attr_name,
+                )
             else:
                 raise ObjectMissmatchedError(
                     jmux_model=cls.__name__,
@@ -274,6 +241,88 @@ class JMux(ABC):
                     attribute=attr_name,
                     message="Unexpected main type on JMux",
                 )
+
+    @classmethod
+    def _assert_is_allowed_streamable_values(
+        cls,
+        jmux_subtype_set: Set[Type],
+        pydantic_subtype_set: Set[Type],
+        pydantic_main_type_set: Set[Type],
+        pydantic_model: Type[BaseModel],
+        attr_name: str,
+    ):
+        if len(jmux_subtype_set) != 1:
+            raise ForbiddenTypeHintsError(
+                message=f"StreamableValues must have exactly one underlying type, got {jmux_subtype_set}."
+            )
+
+        if list in pydantic_main_type_set:
+            NonNoneType = get_main_type(jmux_subtype_set)
+            PydanticNonNoneType = get_main_type(pydantic_subtype_set)
+            if issubclass(NonNoneType, JMux):
+                NonNoneType.assert_conforms_to(PydanticNonNoneType)
+                return
+            if jmux_subtype_set != pydantic_subtype_set:
+                raise ObjectMissmatchedError(
+                    jmux_model=cls.__name__,
+                    pydantic_model=pydantic_model.__name__,
+                    attribute=attr_name,
+                    message=f"StreamableValues of type list with subtype {jmux_subtype_set} does not match pydantic model type: {pydantic_subtype_set}",
+                )
+        elif str in pydantic_main_type_set:
+            if jmux_subtype_set != pydantic_main_type_set:
+                raise ObjectMissmatchedError(
+                    jmux_model=cls.__name__,
+                    pydantic_model=pydantic_model.__name__,
+                    attribute=attr_name,
+                    message=f"StreamableValues of type string does not match pydantic model type: {pydantic_main_type_set}",
+                )
+        else:
+            raise ForbiddenTypeHintsError(
+                message="StreamableValues must be initialized with a sequence type."
+            )
+
+    @classmethod
+    def _assert_is_allowed_awaitable_value(
+        cls,
+        jmux_subtype_set: Set[Type],
+        pydantic_subtype_set: Set[Type],
+        pydantic_main_type_set: Set[Type],
+        pydantic_model: Type[BaseModel],
+        attr_name: str,
+    ):
+        if len(pydantic_subtype_set) > 0:
+            raise ForbiddenTypeHintsError(
+                message="Pydantic model cannot have subtype for AwaitableValue."
+            )
+        NonNoneType = get_main_type(jmux_subtype_set)
+        PydanticNonNoneType = get_main_type(pydantic_main_type_set)
+        if issubclass(NonNoneType, JMux):
+            NonNoneType.assert_conforms_to(PydanticNonNoneType)
+            return
+        if not jmux_subtype_set == pydantic_main_type_set:
+            raise ObjectMissmatchedError(
+                jmux_model=cls.__name__,
+                pydantic_model=pydantic_model.__name__,
+                attribute=attr_name,
+                message=f"AwaitableValue with type {jmux_subtype_set} does not match pydantic model type: {pydantic_main_type_set}",
+            )
+
+    async def feed_chunks(self, chunks: str) -> None:
+        """
+        Feeds a string of characters to the JMux parser.
+
+        Args:
+            chunks: The string of characters to feed.
+
+        Raises:
+            UnexpectedCharacterError: If an unexpected character is encountered.
+            ObjectAlreadyClosedError: If the JMux object is already closed.
+            UnexpectedStateError: If the parser is in an unexpected state.
+            EmptyKeyError: If an empty key is encountered in a JSON object.
+        """
+        for ch in chunks:
+            await self.feed_char(ch)
 
     async def feed_char(self, ch: str) -> None:
         """
@@ -288,6 +337,13 @@ class JMux(ABC):
             UnexpectedStateError: If the parser is in an unexpected state.
             EmptyKeyError: If an empty key is encountered in a JSON object.
         """
+        if len(ch) != 1:
+            raise UnexpectedCharacterError(
+                character=ch,
+                pda_stack=self._pda.stack,
+                pda_state=self._pda.state,
+                message="Only single characters are allowed to be fed to JMux.",
+            )
         match self._pda.top:
             # CONTEXT: Start
             case None:
