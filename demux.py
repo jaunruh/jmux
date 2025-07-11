@@ -148,6 +148,12 @@ class Sink[T: Emittable]:
 
 
 class JMux(ABC):
+    """
+    JMux is an abstract base class for creating JSON demultiplexers.
+    It parses a JSON stream and demultiplexes it into different sinks,
+    which can be either AwaitableValue or StreamableValues.
+    """
+
     def __init__(self):
         self._instantiate_attributes()
         self._pda: PushDownAutomata[M, S] = PushDownAutomata[M, S](S.START)
@@ -171,6 +177,17 @@ class JMux(ABC):
 
     @classmethod
     def assert_conforms_to(cls, pydantic_model: Type[BaseModel]) -> None:
+        """
+        Asserts that the JMux class conforms to a given Pydantic model.
+
+        Args:
+            pydantic_model: The Pydantic model to compare against.
+
+        Raises:
+            MissingAttributeError: If an attribute is missing in the Pydantic model.
+            ForbiddenTypeHintsError: If a type hint is not allowed.
+            ObjectMissmatchedError: If the JMux class does not match the Pydantic model.
+        """
         for attr_name, type_alias in get_type_hints(cls).items():
             jmux_main_type_set, jmux_subtype_set = extract_types_from_generic_alias(
                 type_alias
@@ -259,6 +276,18 @@ class JMux(ABC):
                 )
 
     async def feed_char(self, ch: str) -> None:
+        """
+        Feeds a character to the JMux parser.
+
+        Args:
+            ch: The character to feed.
+
+        Raises:
+            UnexpectedCharacterError: If an unexpected character is encountered.
+            ObjectAlreadyClosedError: If the JMux object is already closed.
+            UnexpectedStateError: If the parser is in an unexpected state.
+            EmptyKeyError: If an empty key is encountered in a JSON object.
+        """
         match self._pda.top:
             # CONTEXT: Start
             case None:
