@@ -33,3 +33,25 @@ class Mode(Enum):
     ROOT = "$"
     OBJECT = "object"
     ARRAY = "array"
+
+
+OBJECT_OPEN = set("{")
+OBJECT_CLOSE = set("}")
+COLON = set(":")
+ARRAY_OPEN = set("[")
+ARRAY_CLOSE = set("]")
+COMMA = set(",")
+QUOTE = set('"')
+
+NUMBER_OPEN = set("0123456789-")
+BOOLEAN_OPEN = set("tf")
+NULL_OPEN = set("n")
+
+INTERGER_ALLOWED = set("0123456789")
+FLOAT_ALLOWED = set("0123456789-+eE.")
+BOOLEAN_ALLOWED = set("truefals")
+NULL_ALLOWED = set("nul")
+
+JSON_FALSE = "false"
+JSON_TRUE = "true"
+JSON_NULL = "null"

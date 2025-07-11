@@ -1,8 +1,8 @@
 from asyncio import Event, Queue
+from enum import Enum
 from types import NoneType
 from typing import (
     AsyncGenerator,
-    Literal,
     Protocol,
     Set,
     Type,
@@ -13,7 +13,10 @@ from typing import (
 from jmux.error import NothingEmittedError, SinkClosedError
 from jmux.helpers import extract_types_from_generic_alias
 
-type SinkType = Literal["StreamableValues", "AwaitableValue"]
+
+class SinkType(Enum):
+    STREAMABLE_VALUES = "StreamableValues"
+    AWAITABLE_VALUE = "AwaitableValue"
 
 
 class UnderlyingGenericMixin[T]:
@@ -104,7 +107,7 @@ class StreamableValues[T](UnderlyingGenericMixin[T]):
         return self._last_item
 
     def get_sink_type(self) -> SinkType:
-        return "StreamableValues"
+        return SinkType.STREAMABLE_VALUES
 
     def __aiter__(self):
         return self._stream()
@@ -155,7 +158,7 @@ class AwaitableValue[T](UnderlyingGenericMixin[T]):
         return self._value
 
     def get_sink_type(self) -> SinkType:
-        return "AwaitableValue"
+        return SinkType.AWAITABLE_VALUE
 
     def __await__(self):
         return self._wait().__await__()
