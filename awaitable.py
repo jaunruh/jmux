@@ -129,7 +129,7 @@ class AwaitableValue[T](UnderlyingGenericMixin[T]):
         self._value: T | None = None
 
     async def put(self, value: T):
-        if self._value:
+        if self._value is not None or self._is_closed or self._event.is_set():
             raise ValueError("AwaitableValue can only be set once.")
         self._value = value
         self._event.set()
@@ -153,7 +153,7 @@ class AwaitableValue[T](UnderlyingGenericMixin[T]):
         await self.close()
 
     def get_current(self) -> T:
-        if not self._value:
+        if self._value is None:
             raise ValueError("AwaitableValue has not been set yet.")
         return self._value
 

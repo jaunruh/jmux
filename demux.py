@@ -1,7 +1,6 @@
 from abc import ABC
 from types import NoneType
 from typing import (
-    List,
     Optional,
     Set,
     Type,
@@ -150,7 +149,6 @@ class Sink[T: Emittable]:
 class JMux(ABC):
     def __init__(self):
         self._instantiate_attributes()
-        self._history: List[str] = []
         self._pda: PushDownAutomata[M, S] = PushDownAutomata[M, S](S.START)
         self._decoder: StringDecoder = StringDecoder()
         self._sink = Sink[Emittable](self)
@@ -256,8 +254,6 @@ class JMux(ABC):
                 )
 
     async def feed_char(self, ch: str) -> None:
-        self._history.append(ch)
-
         # CONTEXT: Start
         if self._pda.top is None:
             if self._pda.state is S.START:
