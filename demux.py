@@ -2,7 +2,6 @@ from abc import ABC
 from types import NoneType
 from typing import (
     List,
-    Literal,
     Optional,
     Set,
     Type,
@@ -11,6 +10,9 @@ from typing import (
     get_type_hints,
 )
 
+from jmux.constants import PRIMITIVE_STATES
+from jmux.constants import Mode as M
+from jmux.constants import State as S
 from jmux.decoder import StringDecoder
 from jmux.error import (
     EmptyKeyError,
@@ -37,39 +39,6 @@ from pydantic import BaseModel
 
 type Primitive = int | float | str | bool | None
 type Emittable = Primitive | "JMux"
-
-
-type State = Literal[
-    "start",
-    "end",
-    "error",
-    # expect
-    "expect_key",
-    "expect_colon",
-    "expect_value",
-    "expect_comma_or_eoc",
-    # parsing
-    "parsing_key",
-    "parsing_string",
-    "parsing_integer",
-    "parsing_float",
-    "parsing_boolean",
-    "parsing_null",
-    "parsing_object",
-]
-
-PRIMITIVE_STATES: List[State] = [
-    "parsing_integer",
-    "parsing_float",
-    "parsing_boolean",
-    "parsing_null",
-]
-
-type Mode = Literal[
-    "$",
-    "object",
-    "array",
-]
 
 
 class Sink[T: Emittable]:
@@ -163,9 +132,7 @@ class JMux(ABC):
     def __init__(self):
         self._instantiate_attributes()
         self._history: List[str] = []
-        self._pda: PushDownAutomata[Mode, State] = PushDownAutomata[Mode, State](
-            "start"
-        )
+        self._pda: PushDownAutomata[M, S] = PushDownAutomata[M, S](S.START)
         self._decoder: StringDecoder = StringDecoder()
         self._sink = Sink[Emittable](self)
 
@@ -274,10 +241,10 @@ class JMux(ABC):
 
         # CONTEXT: Start
         if self._pda.top is None:
-            if self._pda.state == "start":
+            if self._pda.state is S.START:
                 if ch == "{":
-                    self._pda.push("$")
-                    self._pda.set_state("expect_key")
+                    self._pda.push(M.ROOT)
+                    self._pda.set_state(S.EXPECT_KEY)
                     return
                 else:
                     raise UnexpectedCharacterError(
@@ -286,19 +253,19 @@ class JMux(ABC):
                         self._pda.state,
                         "JSON must start with '{' character.",
                     )
-            elif self._pda.state == "end":
+            elif self._pda.state is S.END:
                 raise ObjectAlreadyClosedError(
                     object_name=self.__class__.__name__,
                     message=f"Cannot feed more characters to closed JMux object, got '{ch}'",
                 )
 
         # CONTEXT: Root
-        if self._pda.top == "$":
-            if self._pda.state == "expect_key":
+        if self._pda.top == M.ROOT:
+            if self._pda.state is S.EXPECT_KEY:
                 if is_json_whitespace(ch):
                     return
                 elif ch == '"':
-                    self._pda.set_state("parsing_key")
+                    self._pda.set_state(S.PARSING_KEY)
                     self._decoder.reset()
                     return
                 else:
@@ -309,24 +276,24 @@ class JMux(ABC):
                         "Char needs to be '\"' or JSON whitespaces",
                     )
 
-            if self._pda.state == "parsing_key":
+            if self._pda.state is S.PARSING_KEY:
                 if self._decoder.is_terminating_quote(ch):
                     buffer = self._decoder.buffer
                     if not buffer:
                         raise EmptyKeyError("Empty key is not allowed in JSON objects.")
                     self._sink.set_current(buffer)
                     self._decoder.reset()
-                    self._pda.set_state("expect_colon")
+                    self._pda.set_state(S.EXPECT_COLON)
                     return
                 else:
                     self._decoder.push(ch)
                     return
 
-            if self._pda.state == "expect_colon":
+            if self._pda.state is S.EXPECT_COLON:
                 if is_json_whitespace(ch):
                     return
                 elif ch == ":":
-                    self._pda.set_state("expect_value")
+                    self._pda.set_state(S.EXPECT_VALUE)
                     return
                 else:
                     raise UnexpectedCharacterError(
@@ -336,13 +303,13 @@ class JMux(ABC):
                         "Char must be ':' or JSON whitespaces.",
                     )
 
-            if self._pda.state == "expect_value":
+            if self._pda.state is S.EXPECT_VALUE:
                 if is_json_whitespace(ch):
                     return
                 elif res := await self._handle_common__expect_value(ch):
                     if (
                         self._sink.current_sink_type == "StreamableValues"
-                        and res != "parsing_string"
+                        and res is not S.PARSING_STRING
                     ):
                         raise UnexpectedCharacterError(
                             ch,
@@ -352,8 +319,8 @@ class JMux(ABC):
                         )
                     return
                 elif ch == "[":
-                    self._pda.set_state("expect_value")
-                    self._pda.push("array")
+                    self._pda.set_state(S.EXPECT_VALUE)
+                    self._pda.push(M.ARRAY)
                     return
                 else:
                     raise UnexpectedCharacterError(
@@ -363,13 +330,13 @@ class JMux(ABC):
                         "Expected '[' or white space.",
                     )
 
-            if self._pda.state == "parsing_string":
+            if self._pda.state is S.PARSING_STRING:
                 if self._decoder.is_terminating_quote(ch):
                     if self._sink.current_sink_type == "AwaitableValue":
                         await self._sink.emit(self._decoder.buffer)
                     self._decoder.reset()
                     await self._sink.close()
-                    self._pda.set_state("expect_comma_or_eoc")
+                    self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
                     return
                 else:
                     self._decoder.push(ch)
@@ -386,16 +353,16 @@ class JMux(ABC):
                     await self._parse_primitive(ch)
                     await self._sink.close()
                     self._decoder.reset()
-                    self._pda.set_state("expect_key")
+                    self._pda.set_state(S.EXPECT_KEY)
                     if ch == "}":
                         await self._finalize()
                     return
 
-            if self._pda.state == "expect_comma_or_eoc":
+            if self._pda.state is S.EXPECT_COMMA_OR_EOC:
                 if is_json_whitespace(ch):
                     return
                 elif ch == ",":
-                    self._pda.set_state("expect_key")
+                    self._pda.set_state(S.EXPECT_KEY)
                     return
                 elif ch == "}":
                     await self._finalize()
@@ -409,7 +376,7 @@ class JMux(ABC):
                     )
 
         # CONTEXT: Array
-        if self._pda.top == "array":
+        if self._pda.top is M.ARRAY:
             if ch == "[":
                 raise UnexpectedCharacterError(
                     ch,
@@ -418,13 +385,13 @@ class JMux(ABC):
                     "No support for 2-dimensional arrays.",
                 )
 
-            if self._pda.state == "expect_value":
+            if self._pda.state is S.EXPECT_VALUE:
                 if is_json_whitespace(ch):
                     return
                 elif await self._handle_common__expect_value(ch):
                     return
                 elif ch == "]":
-                    await self._close_context("expect_comma_or_eoc")
+                    await self._close_context(S.EXPECT_COMMA_OR_EOC)
                     return
                 else:
                     raise UnexpectedCharacterError(
@@ -434,7 +401,7 @@ class JMux(ABC):
                         "Expected value, ']' or white space",
                     )
 
-            if self._pda.state == "parsing_string":
+            if self._pda.state is S.PARSING_STRING:
                 if self._sink.current_sink_type == "AwaitableValue":
                     raise UnexpectedCharacterError(
                         ch,
@@ -445,7 +412,7 @@ class JMux(ABC):
                 if self._decoder.is_terminating_quote(ch):
                     await self._sink.emit(self._decoder.buffer)
                     self._decoder.reset()
-                    self._pda.set_state("expect_comma_or_eoc")
+                    self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
                     return
                 else:
                     self._decoder.push(ch)
@@ -460,19 +427,19 @@ class JMux(ABC):
                     await self._parse_primitive(ch)
                     self._decoder.reset()
                     if ch == ",":
-                        self._pda.set_state("expect_value")
+                        self._pda.set_state(S.EXPECT_VALUE)
                     elif ch == "]":
-                        await self._close_context("expect_comma_or_eoc")
+                        await self._close_context(S.EXPECT_COMMA_OR_EOC)
                     return
 
-            if self._pda.state == "expect_comma_or_eoc":
+            if self._pda.state is S.EXPECT_COMMA_OR_EOC:
                 if is_json_whitespace(ch):
                     return
                 elif ch == ",":
-                    self._pda.set_state("expect_value")
+                    self._pda.set_state(S.EXPECT_VALUE)
                     return
                 elif ch == "]":
-                    await self._close_context("expect_comma_or_eoc")
+                    await self._close_context(S.EXPECT_COMMA_OR_EOC)
                     return
                 else:
                     raise UnexpectedCharacterError(
@@ -483,8 +450,8 @@ class JMux(ABC):
                     )
 
         # CONTEXT: Object
-        if self._pda.top == "object":
-            if self._pda.state != "parsing_object":
+        if self._pda.top is M.OBJECT:
+            if self._pda.state is not S.PARSING_OBJECT:
                 raise UnexpectedCharacterError(
                     ch,
                     self._pda.stack,
@@ -495,20 +462,20 @@ class JMux(ABC):
                 self._pda.pop()
                 if self._pda.top == "$":
                     await self._sink.close()
-                self._pda.set_state("expect_comma_or_eoc")
+                self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
                 return
             else:
                 await self._sink.forward_char(ch)
                 return
 
     async def _parse_primitive(self, ch: str) -> None:
-        if self._pda.state == "parsing_null":
+        if self._pda.state is S.PARSING_NULL:
             if not self._decoder.buffer == "null":
                 raise ParsePrimitiveError(
                     f"Expected 'null', got '{self._decoder.buffer}'"
                 )
             await self._sink.emit(None)
-        elif self._pda.state == "parsing_boolean":
+        elif self._pda.state is S.PARSING_BOOLEAN:
             await self._sink.emit(self._decoder.buffer == "true")
         else:
             try:
@@ -519,7 +486,7 @@ class JMux(ABC):
                 raise ParsePrimitiveError(f"Buffer: {buffer}; Error: {e}") from e
             await self._sink.emit(value)
 
-    async def _handle_common__expect_value(self, ch: str) -> State | None:
+    async def _handle_common__expect_value(self, ch: str) -> S | None:
         generic_set = self._sink.current_underlying_generics
         generic = self._sink.current_underlying_main_generic
         if ch == '"':
@@ -530,9 +497,9 @@ class JMux(ABC):
                     self._pda.state,
                     f"Trying to parse 'string' but underlying generic is '{generic_set}'.",
                 )
-            self._pda.set_state("parsing_string")
+            self._pda.set_state(S.PARSING_STRING)
             self._decoder.reset()
-            return "parsing_string"
+            return S.PARSING_STRING
         if ch in "0123456789-":
             if not any(t in generic_set for t in (int, float)):
                 raise UnexpectedCharacterError(
@@ -543,11 +510,11 @@ class JMux(ABC):
                 )
             self._decoder.push(ch)
             if generic is int:
-                self._pda.set_state("parsing_integer")
-                return "parsing_integer"
+                self._pda.set_state(S.PARSING_INTEGER)
+                return S.PARSING_INTEGER
             else:
-                self._pda.set_state("parsing_float")
-                return "parsing_float"
+                self._pda.set_state(S.PARSING_FLOAT)
+                return S.PARSING_FLOAT
         if ch in "tf":
             if bool not in generic_set:
                 raise UnexpectedCharacterError(
@@ -556,9 +523,9 @@ class JMux(ABC):
                     self._pda.state,
                     f"Trying to parse 'boolean' but underlying generic is '{generic.__name__}'.",
                 )
-            self._pda.set_state("parsing_boolean")
+            self._pda.set_state(S.PARSING_BOOLEAN)
             self._decoder.push(ch)
-            return "parsing_boolean"
+            return S.PARSING_BOOLEAN
         if ch in "n":
             if NoneType not in generic_set:
                 raise UnexpectedCharacterError(
@@ -567,9 +534,9 @@ class JMux(ABC):
                     self._pda.state,
                     f"Trying to parse 'null' but underlying generic is '{generic.__name__}'.",
                 )
-            self._pda.set_state("parsing_null")
+            self._pda.set_state(S.PARSING_NULL)
             self._decoder.push(ch)
-            return "parsing_null"
+            return S.PARSING_NULL
         if ch == "{":
             if not issubclass(generic, JMux):
                 raise UnexpectedCharacterError(
@@ -580,11 +547,11 @@ class JMux(ABC):
                 )
             await self._sink.create_and_emit_nested()
             await self._sink.forward_char(ch)
-            self._pda.set_state("parsing_object")
-            self._pda.push("object")
-            return "parsing_object"
+            self._pda.set_state(S.PARSING_OBJECT)
+            self._pda.push(M.OBJECT)
+            return S.PARSING_OBJECT
 
-    async def _close_context(self, new_state: State) -> None:
+    async def _close_context(self, new_state: S) -> None:
         await self._sink.close()
         self._pda.pop()
         self._pda.set_state(new_state)
@@ -601,10 +568,10 @@ class JMux(ABC):
                 ) from e
 
         self._pda.pop()
-        self._pda.set_state("end")
+        self._pda.set_state(S.END)
 
     def _assert_primitive_character_allowed_in_state(self, ch: str) -> None:
-        if self._pda.state == "parsing_integer":
+        if self._pda.state is S.PARSING_INTEGER:
             if ch not in "0123456789":
                 raise UnexpectedCharacterError(
                     ch,
@@ -612,7 +579,7 @@ class JMux(ABC):
                     self._pda.state,
                     "Trying to parse 'integer' but received unexpected character.",
                 )
-        elif self._pda.state == "parsing_float":
+        elif self._pda.state is S.PARSING_FLOAT:
             if ch not in "0123456789-+eE.":
                 raise UnexpectedCharacterError(
                     ch,
@@ -620,7 +587,7 @@ class JMux(ABC):
                     self._pda.state,
                     "Trying to parse 'float' but received unexpected character.",
                 )
-        elif self._pda.state == "parsing_boolean":
+        elif self._pda.state is S.PARSING_BOOLEAN:
             if ch not in "truefals":
                 raise UnexpectedCharacterError(
                     ch,
@@ -638,7 +605,7 @@ class JMux(ABC):
                     self._pda.state,
                     f"Unexpected character added to buffer for 'boolean': '{self._decoder.buffer}{ch}'.",
                 )
-        elif self._pda.state == "parsing_null":
+        elif self._pda.state is S.PARSING_NULL:
             if ch not in "nul":
                 raise UnexpectedCharacterError(
                     ch,
