@@ -24,6 +24,7 @@ from jmux.error import (
     TypeEmitError,
     UnexpectedAttributeTypeError,
     UnexpectedCharacterError,
+    UnexpectedStateError,
 )
 from jmux.helpers import (
     extract_types_from_generic_alias,
@@ -171,11 +172,13 @@ class JMux(ABC):
     @classmethod
     def assert_conforms_to(cls, pydantic_model: Type[BaseModel]) -> None:
         for attr_name, type_alias in get_type_hints(cls).items():
-            main_type_set, subtype_set = extract_types_from_generic_alias(type_alias)
+            jmux_main_type_set, jmux_subtype_set = extract_types_from_generic_alias(
+                type_alias
+            )
 
             MaybePydanticType = get_type_hints(pydantic_model).get(attr_name, None)
             if MaybePydanticType is None:
-                if NoneType in subtype_set:
+                if NoneType in jmux_subtype_set:
                     continue
                 else:
                     raise MissingAttributeError(
@@ -189,34 +192,36 @@ class JMux(ABC):
             if (
                 pydantic_wrong := len(pydantic_main_type_set) != 1
                 and len(pydantic_subtype_set) > 0
-            ) or len(main_type_set) != 1:
+            ) or len(jmux_main_type_set) != 1:
                 wrong_obj = "pydantic" if pydantic_wrong else "JMux"
-                wrong_set = main_type_set if pydantic_wrong else pydantic_main_type_set
+                wrong_set = (
+                    jmux_main_type_set if pydantic_wrong else pydantic_main_type_set
+                )
                 raise ForbiddenTypeHintsError(
                     message=(f"Forbidden typing received on {wrong_obj}: {wrong_set}"),
                 )
 
-            if StreamableValues in main_type_set:
-                if len(subtype_set) != 1:
+            if StreamableValues in jmux_main_type_set:
+                if len(jmux_subtype_set) != 1:
                     raise ForbiddenTypeHintsError(
-                        message=f"StreamableValues must have exactly one underlying type, got {subtype_set}."
+                        message=f"StreamableValues must have exactly one underlying type, got {jmux_subtype_set}."
                     )
 
                 if list in pydantic_main_type_set:
-                    NonNoneType = get_main_type(subtype_set)
+                    NonNoneType = get_main_type(jmux_subtype_set)
                     PydanticNonNoneType = get_main_type(pydantic_subtype_set)
                     if issubclass(NonNoneType, JMux):
                         NonNoneType.assert_conforms_to(PydanticNonNoneType)
                         continue
-                    if subtype_set != pydantic_subtype_set:
+                    if jmux_subtype_set != pydantic_subtype_set:
                         raise ObjectMissmatchedError(
                             jmux_model=cls.__name__,
                             pydantic_model=pydantic_model.__name__,
                             attribute=attr_name,
-                            message=f"StreamableValues of type list with subtype {subtype_set} does not match pydantic model type: {pydantic_subtype_set}",
+                            message=f"StreamableValues of type list with subtype {jmux_subtype_set} does not match pydantic model type: {pydantic_subtype_set}",
                         )
                 elif str in pydantic_main_type_set:
-                    if subtype_set != pydantic_main_type_set:
+                    if jmux_subtype_set != pydantic_main_type_set:
                         raise ObjectMissmatchedError(
                             jmux_model=cls.__name__,
                             pydantic_model=pydantic_model.__name__,
@@ -227,22 +232,22 @@ class JMux(ABC):
                     raise ForbiddenTypeHintsError(
                         message="StreamableValues must be initialized with a sequence type."
                     )
-            elif AwaitableValue in main_type_set:
+            elif AwaitableValue in jmux_main_type_set:
                 if len(pydantic_subtype_set) > 0:
                     raise ForbiddenTypeHintsError(
                         message="Pydantic model cannot have subtype for AwaitableValue."
                     )
-                NonNoneType = get_main_type(subtype_set)
+                NonNoneType = get_main_type(jmux_subtype_set)
                 PydanticNonNoneType = get_main_type(pydantic_main_type_set)
                 if issubclass(NonNoneType, JMux):
                     NonNoneType.assert_conforms_to(PydanticNonNoneType)
                     continue
-                if not subtype_set == pydantic_main_type_set:
+                if not jmux_subtype_set == pydantic_main_type_set:
                     raise ObjectMissmatchedError(
                         jmux_model=cls.__name__,
                         pydantic_model=pydantic_model.__name__,
                         attribute=attr_name,
-                        message=f"AwaitableValue with type {subtype_set} does not match pydantic model type: {pydantic_main_type_set}",
+                        message=f"AwaitableValue with type {jmux_subtype_set} does not match pydantic model type: {pydantic_main_type_set}",
                     )
 
             else:
@@ -254,234 +259,244 @@ class JMux(ABC):
                 )
 
     async def feed_char(self, ch: str) -> None:
-        # CONTEXT: Start
-        if self._pda.top is None:
-            if self._pda.state is S.START:
-                if ch in OBJECT_OPEN:
-                    self._pda.push(M.ROOT)
-                    self._pda.set_state(S.EXPECT_KEY)
-                    return
-                else:
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self._pda.stack,
-                        self._pda.state,
-                        "JSON must start with '{' character.",
-                    )
-            elif self._pda.state is S.END:
-                raise ObjectAlreadyClosedError(
-                    object_name=self.__class__.__name__,
-                    message=f"Cannot feed more characters to closed JMux object, got '{ch}'",
-                )
-
-        # CONTEXT: Root
-        if self._pda.top == M.ROOT:
-            if self._pda.state is S.EXPECT_KEY:
-                if is_json_whitespace(ch):
-                    return
-                elif ch == '"':
-                    self._pda.set_state(S.PARSING_KEY)
-                    self._decoder.reset()
-                    return
-                else:
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self._pda.stack,
-                        self._pda.state,
-                        "Char needs to be '\"' or JSON whitespaces",
-                    )
-
-            if self._pda.state is S.PARSING_KEY:
-                if self._decoder.is_terminating_quote(ch):
-                    buffer = self._decoder.buffer
-                    if not buffer:
-                        raise EmptyKeyError("Empty key is not allowed in JSON objects.")
-                    self._sink.set_current(buffer)
-                    self._decoder.reset()
-                    self._pda.set_state(S.EXPECT_COLON)
-                    return
-                else:
-                    self._decoder.push(ch)
-                    return
-
-            if self._pda.state is S.EXPECT_COLON:
-                if is_json_whitespace(ch):
-                    return
-                elif ch in COLON:
-                    self._pda.set_state(S.EXPECT_VALUE)
-                    return
-                else:
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self._pda.stack,
-                        self._pda.state,
-                        "Char must be ':' or JSON whitespaces.",
-                    )
-
-            if self._pda.state is S.EXPECT_VALUE:
-                if is_json_whitespace(ch):
-                    return
-                elif res := await self._handle_common__expect_value(ch):
-                    if (
-                        self._sink.current_sink_type is SinkType.STREAMABLE_VALUES
-                        and res is not S.PARSING_STRING
-                    ):
-                        raise UnexpectedCharacterError(
-                            ch,
+        match self._pda.top:
+            # CONTEXT: Start
+            case None:
+                match self._pda.state:
+                    case S.START:
+                        if ch in OBJECT_OPEN:
+                            self._pda.push(M.ROOT)
+                            self._pda.set_state(S.EXPECT_KEY)
+                        else:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "JSON must start with '{' character.",
+                            )
+                    case S.END:
+                        raise ObjectAlreadyClosedError(
+                            object_name=self.__class__.__name__,
+                            message=f"Cannot feed more characters to closed JMux object, got '{ch}'",
+                        )
+                    case _:
+                        raise UnexpectedStateError(
                             self._pda.stack,
                             self._pda.state,
-                            "Expected '[' or '\"' for 'StreamableValues'",
+                            message="Only START and END states are allowed in the root context.",
                         )
-                    return
-                elif ch in ARRAY_OPEN:
-                    self._pda.set_state(S.EXPECT_VALUE)
-                    self._pda.push(M.ARRAY)
-                    return
-                else:
+
+            # CONTEXT: Root
+            case M.ROOT:
+                match self._pda.state:
+                    case S.EXPECT_KEY:
+                        if is_json_whitespace(ch):
+                            pass
+                        elif ch == '"':
+                            self._pda.set_state(S.PARSING_KEY)
+                            self._decoder.reset()
+                        else:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "Char needs to be '\"' or JSON whitespaces",
+                            )
+
+                    case S.PARSING_KEY:
+                        if self._decoder.is_terminating_quote(ch):
+                            buffer = self._decoder.buffer
+                            if not buffer:
+                                raise EmptyKeyError(
+                                    "Empty key is not allowed in JSON objects."
+                                )
+                            self._sink.set_current(buffer)
+                            self._decoder.reset()
+                            self._pda.set_state(S.EXPECT_COLON)
+                        else:
+                            self._decoder.push(ch)
+
+                    case S.EXPECT_COLON:
+                        if is_json_whitespace(ch):
+                            pass
+                        elif ch in COLON:
+                            self._pda.set_state(S.EXPECT_VALUE)
+                        else:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "Char must be ':' or JSON whitespaces.",
+                            )
+
+                    case S.EXPECT_VALUE:
+                        if is_json_whitespace(ch):
+                            pass
+                        elif res := await self._handle_common__expect_value(ch):
+                            if (
+                                self._sink.current_sink_type
+                                is SinkType.STREAMABLE_VALUES
+                                and res is not S.PARSING_STRING
+                            ):
+                                raise UnexpectedCharacterError(
+                                    ch,
+                                    self._pda.stack,
+                                    self._pda.state,
+                                    "Expected '[' or '\"' for 'StreamableValues'",
+                                )
+                        elif ch in ARRAY_OPEN:
+                            self._pda.set_state(S.EXPECT_VALUE)
+                            self._pda.push(M.ARRAY)
+                        else:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "Expected '[' or white space.",
+                            )
+
+                    case S.PARSING_STRING:
+                        if self._decoder.is_terminating_quote(ch):
+                            if self._sink.current_sink_type == SinkType.AWAITABLE_VALUE:
+                                await self._sink.emit(self._decoder.buffer)
+                            self._decoder.reset()
+                            await self._sink.close()
+                            self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
+                        else:
+                            self._decoder.push(ch)
+                            if (
+                                self._sink.current_sink_type
+                                is SinkType.STREAMABLE_VALUES
+                            ):
+                                await self._sink.emit(ch)
+
+                    case _ if self._pda.state in PRIMITIVE_STATES:
+                        if ch not in COMMA | OBJECT_CLOSE:
+                            self._assert_primitive_character_allowed_in_state(ch)
+                            self._decoder.push(ch)
+                        else:
+                            await self._parse_primitive(ch)
+                            await self._sink.close()
+                            self._decoder.reset()
+                            self._pda.set_state(S.EXPECT_KEY)
+                            if ch in OBJECT_CLOSE:
+                                await self._finalize()
+
+                    case S.EXPECT_COMMA_OR_EOC:
+                        if is_json_whitespace(ch):
+                            pass
+                        elif ch in COMMA:
+                            self._pda.set_state(S.EXPECT_KEY)
+                        elif ch in OBJECT_CLOSE:
+                            await self._finalize()
+                        else:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "Expected ',', '}' or white space.",
+                            )
+
+                    case _:
+                        raise UnexpectedStateError(
+                            self._pda.stack,
+                            self._pda.state,
+                            message="State not allowed in root context.",
+                        )
+
+            # CONTEXT: Array
+            case M.ARRAY:
+                if ch in ARRAY_OPEN:
                     raise UnexpectedCharacterError(
                         ch,
                         self._pda.stack,
                         self._pda.state,
-                        "Expected '[' or white space.",
+                        "No support for 2-dimensional arrays.",
                     )
 
-            if self._pda.state is S.PARSING_STRING:
-                if self._decoder.is_terminating_quote(ch):
-                    if self._sink.current_sink_type == SinkType.AWAITABLE_VALUE:
-                        await self._sink.emit(self._decoder.buffer)
-                    self._decoder.reset()
-                    await self._sink.close()
+                match self._pda.state:
+                    case S.EXPECT_VALUE:
+                        if is_json_whitespace(ch):
+                            pass
+                        elif await self._handle_common__expect_value(ch):
+                            pass
+                        elif ch in ARRAY_CLOSE:
+                            await self._close_context(S.EXPECT_COMMA_OR_EOC)
+                        else:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "Expected value, ']' or white space",
+                            )
+
+                    case S.PARSING_STRING:
+                        if self._sink.current_sink_type is SinkType.AWAITABLE_VALUE:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "Cannot parse string inside of an array with AwaitableValue sink type.",
+                            )
+                        if self._decoder.is_terminating_quote(ch):
+                            await self._sink.emit(self._decoder.buffer)
+                            self._decoder.reset()
+                            self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
+                        else:
+                            self._decoder.push(ch)
+
+                    case _ if self._pda.state in PRIMITIVE_STATES:
+                        if ch not in COMMA | ARRAY_CLOSE:
+                            self._assert_primitive_character_allowed_in_state(ch)
+                            self._decoder.push(ch)
+                        else:
+                            await self._parse_primitive(ch)
+                            self._decoder.reset()
+                            if ch in COMMA:
+                                self._pda.set_state(S.EXPECT_VALUE)
+                            elif ch in ARRAY_CLOSE:
+                                await self._close_context(S.EXPECT_COMMA_OR_EOC)
+
+                    case S.EXPECT_COMMA_OR_EOC:
+                        if is_json_whitespace(ch):
+                            pass
+                        elif ch in COMMA:
+                            self._pda.set_state(S.EXPECT_VALUE)
+                        elif ch in ARRAY_CLOSE:
+                            await self._close_context(S.EXPECT_COMMA_OR_EOC)
+                        else:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "Expected ',', ']' or white space.",
+                            )
+
+                    case _:
+                        raise UnexpectedStateError(
+                            self._pda.stack,
+                            self._pda.state,
+                            message="State not allowed in array context.",
+                        )
+
+            # CONTEXT: Object
+            case M.OBJECT:
+                if self._pda.state is not S.PARSING_OBJECT:
+                    raise UnexpectedCharacterError(
+                        ch,
+                        self._pda.stack,
+                        self._pda.state,
+                        "State in object context must be 'parsing_object'",
+                    )
+                if ch in OBJECT_CLOSE:
+                    self._pda.pop()
+                    if self._pda.top is M.ROOT:
+                        await self._sink.close()
                     self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
                     return
                 else:
-                    self._decoder.push(ch)
-                    if self._sink.current_sink_type is SinkType.STREAMABLE_VALUES:
-                        await self._sink.emit(ch)
+                    await self._sink.forward_char(ch)
                     return
-
-            if self._pda.state in PRIMITIVE_STATES:
-                if ch not in COMMA | OBJECT_CLOSE:
-                    self._assert_primitive_character_allowed_in_state(ch)
-                    self._decoder.push(ch)
-                    return
-                else:
-                    await self._parse_primitive(ch)
-                    await self._sink.close()
-                    self._decoder.reset()
-                    self._pda.set_state(S.EXPECT_KEY)
-                    if ch in OBJECT_CLOSE:
-                        await self._finalize()
-                    return
-
-            if self._pda.state is S.EXPECT_COMMA_OR_EOC:
-                if is_json_whitespace(ch):
-                    return
-                elif ch in COMMA:
-                    self._pda.set_state(S.EXPECT_KEY)
-                    return
-                elif ch in OBJECT_CLOSE:
-                    await self._finalize()
-                    return
-                else:
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self._pda.stack,
-                        self._pda.state,
-                        "Expected ',', '}' or white space.",
-                    )
-
-        # CONTEXT: Array
-        if self._pda.top is M.ARRAY:
-            if ch in ARRAY_OPEN:
-                raise UnexpectedCharacterError(
-                    ch,
-                    self._pda.stack,
-                    self._pda.state,
-                    "No support for 2-dimensional arrays.",
-                )
-
-            if self._pda.state is S.EXPECT_VALUE:
-                if is_json_whitespace(ch):
-                    return
-                elif await self._handle_common__expect_value(ch):
-                    return
-                elif ch in ARRAY_CLOSE:
-                    await self._close_context(S.EXPECT_COMMA_OR_EOC)
-                    return
-                else:
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self._pda.stack,
-                        self._pda.state,
-                        "Expected value, ']' or white space",
-                    )
-
-            if self._pda.state is S.PARSING_STRING:
-                if self._sink.current_sink_type is SinkType.AWAITABLE_VALUE:
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self._pda.stack,
-                        self._pda.state,
-                        "Cannot parse string inside of an array with AwaitableValue sink type.",
-                    )
-                if self._decoder.is_terminating_quote(ch):
-                    await self._sink.emit(self._decoder.buffer)
-                    self._decoder.reset()
-                    self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
-                    return
-                else:
-                    self._decoder.push(ch)
-                    return
-
-            if self._pda.state in PRIMITIVE_STATES:
-                if ch not in COMMA | ARRAY_CLOSE:
-                    self._assert_primitive_character_allowed_in_state(ch)
-                    self._decoder.push(ch)
-                    return
-                else:
-                    await self._parse_primitive(ch)
-                    self._decoder.reset()
-                    if ch in COMMA:
-                        self._pda.set_state(S.EXPECT_VALUE)
-                    elif ch in ARRAY_CLOSE:
-                        await self._close_context(S.EXPECT_COMMA_OR_EOC)
-                    return
-
-            if self._pda.state is S.EXPECT_COMMA_OR_EOC:
-                if is_json_whitespace(ch):
-                    return
-                elif ch in COMMA:
-                    self._pda.set_state(S.EXPECT_VALUE)
-                    return
-                elif ch in ARRAY_CLOSE:
-                    await self._close_context(S.EXPECT_COMMA_OR_EOC)
-                    return
-                else:
-                    raise UnexpectedCharacterError(
-                        ch,
-                        self._pda.stack,
-                        self._pda.state,
-                        "Expected ',', ']' or white space.",
-                    )
-
-        # CONTEXT: Object
-        if self._pda.top is M.OBJECT:
-            if self._pda.state is not S.PARSING_OBJECT:
-                raise UnexpectedCharacterError(
-                    ch,
-                    self._pda.stack,
-                    self._pda.state,
-                    "State in object context must be 'parsing_object'",
-                )
-            if ch in OBJECT_CLOSE:
-                self._pda.pop()
-                if self._pda.top is M.ROOT:
-                    await self._sink.close()
-                self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
-                return
-            else:
-                await self._sink.forward_char(ch)
-                return
 
     async def _parse_primitive(self, ch: str) -> None:
         if self._pda.state is S.PARSING_NULL:

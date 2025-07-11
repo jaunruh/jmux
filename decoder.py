@@ -1,3 +1,6 @@
+from jmux.error import StreamParseError
+
+
 class StringDecoder:
     escape_map = {
         '"': '"',
@@ -40,6 +43,9 @@ class StringDecoder:
                         # Invalid low surrogate — output both separately
                         self._buffer += chr(self.high_surrogate)
                         self._buffer += chr(code_unit)
+                        raise StreamParseError(
+                            f"Invalid low surrogate: {code_unit:#04x} after high surrogate: {self.high_surrogate:#04x}"
+                        )
                     self.high_surrogate = None
                 elif 0xD800 <= code_unit <= 0xDBFF:
                     # High surrogate, wait for the next \uXXXX

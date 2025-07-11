@@ -114,3 +114,26 @@ class UnexpectedCharacterError(Exception):
             f"Received unexpected character '{character}' in state '{pda_state_str}' with stack {pda_stack_str}"
             + (f": {message}" if message else "")
         )
+
+
+class StreamParseError(Exception):
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__("Failed to parse stream" + (f": {message}" if message else ""))
+        self.message = message
+
+
+class UnexpectedStateError(Exception):
+    def __init__(
+        self,
+        pda_stack: Sequence[Enum] | str,
+        pda_state: Enum | str,
+        message: str | None = None,
+    ) -> None:
+        pda_stack_str = [
+            item.value if isinstance(item, Enum) else item for item in pda_stack
+        ]
+        pda_state_str = pda_state.value if isinstance(pda_state, Enum) else pda_state
+        super().__init__(
+            f"Unexpected state '{pda_state_str}' with stack {pda_stack_str}"
+            + (f": {message}" if message else "")
+        )
