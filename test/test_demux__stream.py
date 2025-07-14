@@ -680,7 +680,7 @@ async def test_json_demux__primitives__partial_streams(
                     consume_bool(),
                     consume_none(),
                 ),
-                timeout=1000000,
+                timeout=5,
             )
     else:
         await wait_for(
@@ -692,7 +692,7 @@ async def test_json_demux__primitives__partial_streams(
                 consume_bool(),
                 consume_none(),
             ),
-            timeout=1000000,
+            timeout=5,
         )
         parsed_json = json.loads(stream)
 
