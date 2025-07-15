@@ -207,6 +207,12 @@ class JMux(ABC):
             pydantic_main_type_set, pydantic_subtype_set = (
                 extract_types_from_generic_alias(MaybePydanticType)
             )
+            cls._assert_only_allowed_types(
+                jmux_main_type_set,
+                jmux_subtype_set,
+                pydantic_main_type_set,
+                pydantic_subtype_set,
+            )
             if (
                 pydantic_wrong := len(pydantic_main_type_set) != 1
                 and len(pydantic_subtype_set) > 0
@@ -307,6 +313,46 @@ class JMux(ABC):
                 pydantic_model=pydantic_model.__name__,
                 attribute=attr_name,
                 message=f"AwaitableValue with type {jmux_subtype_set} does not match pydantic model type: {pydantic_main_type_set}",
+            )
+
+    @classmethod
+    def _assert_only_allowed_types(
+        cls,
+        jmux_main_type_set: Set[Type],
+        jmux_subtype_set: Set[Type],
+        pydantic_main_type_set: Set[Type],
+        pydantic_subtype_set: Set[Type],
+    ) -> None:
+        if not all(t in (AwaitableValue, StreamableValues) for t in jmux_main_type_set):
+            raise ForbiddenTypeHintsError(
+                message=f"JMux must have either AwaitableValue or StreamableValues as main type, got {jmux_main_type_set}."
+            )
+
+        if not any(
+            issubclass(elem, t)
+            for t in (int, float, str, bool, NoneType, JMux, Enum)
+            for elem in jmux_subtype_set
+        ):
+            raise ForbiddenTypeHintsError(
+                message=f"JMux sub type must be one of the emittable types: {jmux_subtype_set}."
+            )
+
+        if len(pydantic_subtype_set) > 0 and not any(
+            issubclass(elem, t)
+            for t in (int, float, str, bool, NoneType, BaseModel, Enum)
+            for elem in pydantic_subtype_set
+        ):
+            raise ForbiddenTypeHintsError(
+                message=f"Pydantic sub type must be one of the primitive, enum or BaseModel, got: {pydantic_subtype_set}."
+            )
+
+        if not any(
+            issubclass(elem, t)
+            for t in (int, float, str, bool, list, NoneType, BaseModel, Enum)
+            for elem in pydantic_main_type_set
+        ):
+            raise ForbiddenTypeHintsError(
+                message=f"Pydantic main type must be one of the primitive, enum, list or BaseModel, got {pydantic_main_type_set}."
             )
 
     async def feed_chunks(self, chunks: str) -> None:

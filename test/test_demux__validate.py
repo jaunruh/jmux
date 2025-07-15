@@ -1,8 +1,15 @@
+from enum import Enum
+
 import pytest
 from jmux.awaitable import AwaitableValue, StreamableValues
 from jmux.demux import JMux
 from jmux.error import ObjectMissmatchedError
 from pydantic import BaseModel
+
+
+class SEnum(Enum):
+    VALUE1 = "value1"
+    VALUE2 = "value2"
 
 
 class CorrectJMux_1(JMux):
@@ -14,6 +21,7 @@ class CorrectJMux_1(JMux):
     key_float: AwaitableValue[float]
     key_bool: AwaitableValue[bool]
     key_none: AwaitableValue[None]
+    key_enum: AwaitableValue[SEnum]
     key_nested: AwaitableValue[NestedJMux]
 
     key_stream: StreamableValues[str]
@@ -23,6 +31,7 @@ class CorrectJMux_1(JMux):
     arr_float: StreamableValues[float]
     arr_bool: StreamableValues[bool]
     arr_none: StreamableValues[None]
+    arr_enum: StreamableValues[SEnum]
     arr_nested: StreamableValues[NestedJMux]
 
 
@@ -36,7 +45,7 @@ class CorrectPydantic_1(BaseModel):
     key_bool: bool
     key_none: None
     key_stream: str
-
+    key_enum: SEnum
     key_nested: NestedPydantic
 
     arr_str: list[str]
@@ -44,6 +53,7 @@ class CorrectPydantic_1(BaseModel):
     arr_float: list[float]
     arr_bool: list[bool]
     arr_none: list[None]
+    arr_enum: list[SEnum]
     arr_nested: list[NestedPydantic]
 
 
