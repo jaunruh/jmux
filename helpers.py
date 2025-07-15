@@ -1,5 +1,5 @@
 from types import NoneType, UnionType
-from typing import Set, Tuple, Type, get_args, get_origin
+from typing import Set, Tuple, Type, Union, get_args, get_origin
 
 
 def is_json_whitespace(ch: str) -> bool:
@@ -10,7 +10,7 @@ def extract_types_from_generic_alias(UnknownType: Type) -> Tuple[Set[Type], Set[
     Origin: Type | None = get_origin(UnknownType)
     if Origin is None:
         return {UnknownType}, set()
-    if Origin is UnionType:
+    if Origin is UnionType or Origin is Union:
         return deconstruct_type(UnknownType), set()
 
     type_args = get_args(UnknownType)
@@ -40,7 +40,7 @@ def deconstruct_type(UnknownType: Type) -> Set[Type]:
         return {NoneType}
     if Origin is None:
         return {UnknownType}
-    if Origin is not UnionType:
+    if not (Origin is UnionType or Origin is Union):
         return {Origin}
     type_args = get_args(UnknownType)
     return set(type_args)

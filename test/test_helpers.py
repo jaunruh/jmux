@@ -1,5 +1,5 @@
 from types import NoneType
-from typing import List, Set, Tuple, Type
+from typing import List, Optional, Set, Tuple, Type
 
 import pytest
 from jmux.awaitable import (
@@ -15,6 +15,8 @@ from jmux.helpers import deconstruct_type, extract_types_from_generic_alias
     "TargetType,expected_tuple",
     [
         (int, {int}),
+        (Optional[int], {int, NoneType}),
+        (int | None, {int, NoneType}),
         (int | str, {str, int}),
         (int | str | NoneType, {str, int, NoneType}),
         (JMux, {JMux}),
@@ -40,6 +42,7 @@ class NestedObject(JMux):
     [
         (int, ({int}, set())),
         (str, ({str}, set())),
+        (Optional[int], ({int, NoneType}, set())),
         (int | None, ({int, NoneType}, set())),
         (List[int], ({list}, {int})),
         (List[int | None], ({list}, {int, NoneType})),
