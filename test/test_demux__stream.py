@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from asyncio import gather, wait_for
+from enum import Enum
 from types import NoneType
 from typing import List, Optional, Type
 
@@ -377,7 +378,7 @@ async def test_json_demux__utf8(stream: str, expected_operations: List[str]):
     "stream,expected_operations",
     [
         (
-            '{"my_str":"foo","my_int":42,"my_float":3.14,"my_bool":true,"my_none":null}',
+            '{"my_str":"foo","my_int":42,"my_float":3.14,"my_bool":true,"my_enum":"value1","my_none":null}',
             [
                 "[producer] sending: {",
                 '[producer] sending: "',
@@ -446,6 +447,26 @@ async def test_json_demux__utf8(stream: str, expected_operations: List[str]):
                 "[producer] sending: m",
                 "[producer] sending: y",
                 "[producer] sending: _",
+                "[producer] sending: e",
+                "[producer] sending: n",
+                "[producer] sending: u",
+                "[producer] sending: m",
+                '[producer] sending: "',
+                "[producer] sending: :",
+                '[producer] sending: "',
+                "[producer] sending: v",
+                "[producer] sending: a",
+                "[producer] sending: l",
+                "[producer] sending: u",
+                "[producer] sending: e",
+                "[producer] sending: 1",
+                '[producer] sending: "',
+                "[enum] received: SEnum.VALUE1",
+                "[producer] sending: ,",
+                '[producer] sending: "',
+                "[producer] sending: m",
+                "[producer] sending: y",
+                "[producer] sending: _",
                 "[producer] sending: n",
                 "[producer] sending: o",
                 "[producer] sending: n",
@@ -465,10 +486,15 @@ async def test_json_demux__utf8(stream: str, expected_operations: List[str]):
 @pytest.mark.anyio
 async def test_json_demux__primitives(stream: str, expected_operations: List[str]):
     class SPrimitives(JMux):
+        class SEnum(Enum):
+            VALUE1 = "value1"
+            VALUE2 = "value2"
+
         my_str: AwaitableValue[str]
         my_int: AwaitableValue[int]
         my_float: AwaitableValue[float]
         my_bool: AwaitableValue[bool]
+        my_enum: AwaitableValue[SEnum]
         my_none: AwaitableValue[NoneType]
 
     llm_stream = AsyncStreamGenerator(stream)
@@ -478,6 +504,7 @@ async def test_json_demux__primitives(stream: str, expected_operations: List[str
     my_int: Optional[int] = None
     my_float: Optional[float] = None
     my_bool: Optional[bool] = None
+    my_enum: Optional[SPrimitives.SEnum] = None
     my_none: Optional[NoneType] = None
     operation_list = []
 
@@ -509,6 +536,13 @@ async def test_json_demux__primitives(stream: str, expected_operations: List[str
         log_emit(op)
         operation_list.append(op)
 
+    async def consume_enum():
+        nonlocal my_enum
+        my_enum = await s_primitives.my_enum
+        op = f"[enum] received: {my_enum}"
+        log_emit(op)
+        operation_list.append(op)
+
     async def consume_none():
         nonlocal my_none
         my_none = await s_primitives.my_none
@@ -532,6 +566,7 @@ async def test_json_demux__primitives(stream: str, expected_operations: List[str
         consume_int(),
         consume_float(),
         consume_bool(),
+        consume_enum(),
         consume_none(),
     )
 
@@ -541,6 +576,7 @@ async def test_json_demux__primitives(stream: str, expected_operations: List[str
     assert my_int == parsed_json["my_int"]
     assert my_float == parsed_json["my_float"]
     assert my_bool == parsed_json["my_bool"]
+    assert my_enum is not None and my_enum.value == parsed_json["my_enum"]
     assert my_none == parsed_json["my_none"]
     assert operation_list == expected_operations
 

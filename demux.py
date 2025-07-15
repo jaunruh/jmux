@@ -1,4 +1,5 @@
 from abc import ABC
+from enum import Enum
 from types import NoneType
 from typing import (
     Optional,
@@ -57,7 +58,7 @@ from jmux.types import State as S
 from pydantic import BaseModel
 
 type Primitive = int | float | str | bool | None
-type Emittable = Primitive | "JMux"
+type Emittable = Primitive | "JMux" | Enum
 
 
 class Sink[T: Emittable]:
@@ -443,7 +444,17 @@ class JMux(ABC):
                     case S.PARSING_STRING:
                         if self._decoder.is_terminating_quote(ch):
                             if self._sink.current_sink_type == SinkType.AWAITABLE_VALUE:
-                                await self._sink.emit(self._decoder.buffer)
+                                MainType = self._sink.current_underlying_main_generic
+                                if issubclass(MainType, Enum):
+                                    try:
+                                        value = MainType(self._decoder.buffer)
+                                        await self._sink.emit(value)
+                                    except ValueError as e:
+                                        raise ParsePrimitiveError(
+                                            f"Invalid enum value: {self._decoder.buffer}"
+                                        ) from e
+                                else:
+                                    await self._sink.emit(self._decoder.buffer)
                             self._decoder.reset()
                             await self._sink.close()
                             self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
@@ -460,7 +471,7 @@ class JMux(ABC):
                             self._assert_primitive_character_allowed_in_state(ch)
                             self._decoder.push(ch)
                         else:
-                            await self._parse_primitive(ch)
+                            await self._parse_primitive()
                             await self._sink.close()
                             self._decoder.reset()
                             self._pda.set_state(S.EXPECT_KEY)
@@ -524,7 +535,17 @@ class JMux(ABC):
                                 "Cannot parse string inside of an array with AwaitableValue sink type.",
                             )
                         if self._decoder.is_terminating_quote(ch):
-                            await self._sink.emit(self._decoder.buffer)
+                            MainType = self._sink.current_underlying_main_generic
+                            if issubclass(MainType, Enum):
+                                try:
+                                    value = MainType(self._decoder.buffer)
+                                    await self._sink.emit(value)
+                                except ValueError as e:
+                                    raise ParsePrimitiveError(
+                                        f"Invalid enum value: {self._decoder.buffer}"
+                                    ) from e
+                            else:
+                                await self._sink.emit(self._decoder.buffer)
                             self._decoder.reset()
                             self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
                         else:
@@ -535,7 +556,7 @@ class JMux(ABC):
                             self._assert_primitive_character_allowed_in_state(ch)
                             self._decoder.push(ch)
                         else:
-                            await self._parse_primitive(ch)
+                            await self._parse_primitive()
                             self._decoder.reset()
                             if ch in COMMA:
                                 self._pda.set_state(S.EXPECT_VALUE)
@@ -583,7 +604,7 @@ class JMux(ABC):
                     await self._sink.forward_char(ch)
                     return
 
-    async def _parse_primitive(self, ch: str) -> None:
+    async def _parse_primitive(self) -> None:
         if self._pda.state is S.PARSING_NULL:
             if not self._decoder.buffer == JSON_NULL:
                 raise ParsePrimitiveError(
@@ -605,7 +626,7 @@ class JMux(ABC):
         generic_set = self._sink.current_underlying_generics
         generic = self._sink.current_underlying_main_generic
         if ch in QUOTE:
-            if str not in generic_set:
+            if not (str in generic_set or issubclass(generic, Enum)):
                 raise UnexpectedCharacterError(
                     ch,
                     self._pda.stack,
