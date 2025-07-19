@@ -3,6 +3,7 @@ from types import NoneType
 from typing import List, Type
 
 import pytest
+
 from jmux.awaitable import AwaitableValue, StreamableValues
 from jmux.demux import JMux
 from jmux.error import (

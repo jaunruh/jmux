@@ -2,6 +2,7 @@ from types import NoneType
 from typing import List, Optional, Set, Tuple, Type
 
 import pytest
+
 from jmux.awaitable import (
     AwaitableValue,
     StreamableValues,

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jmux"
+version = "0.1.0"
+description = "JMux: A Python package for demultiplexing a JSON string into multiple awaitable variables."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "Johannes A.I. Unruh", email = "johannes@unruh.ai" }]
+dependencies = ["anyio>=4.9.0", "pydantic>=2.11.7"]
+keywords = ["demultiplexer", "python", "package", "json"]
+
+[project.urls]
+Homepage = "https://github.com/jaunruh/jmux"
+Repository = "https://github.com/jaunruh/jmux"
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-anyio"]
+dev = ["ruff", "pytest", "pytest-anyio", "uv"]
+
+[tool.ruff]
+# Ruff configuration example
+line-length = 88
+select = ["E", "F", "I"] # Errors, Fixes, Import sorting
+ignore = []
+
+# Or only in test files:
+[tool.ruff.per-file-ignores]
+"tests/*.py" = ["E501"] # Ignore line length in test files
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra"
+testpaths = ["tests"]

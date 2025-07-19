@@ -2,6 +2,7 @@ from types import NoneType
 from typing import Set, Type
 
 import pytest
+
 from jmux.awaitable import (
     AwaitableValue,
     IAsyncSink,

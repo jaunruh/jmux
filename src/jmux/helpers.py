@@ -16,7 +16,8 @@ def extract_types_from_generic_alias(UnknownType: Type) -> Tuple[Set[Type], Set[
     type_args = get_args(UnknownType)
     if len(type_args) != 1:
         raise TypeError(
-            f"Only single type generics can be deconstruct with this function, got {type_args}."
+            f"Only single type generics can be deconstruct with this function, "
+            f"got {type_args}."
         )
 
     Generic: Type = type_args[0]
@@ -25,7 +26,8 @@ def extract_types_from_generic_alias(UnknownType: Type) -> Tuple[Set[Type], Set[
         return {Origin}, type_set
     if len(type_set) != 2:
         raise TypeError(
-            f"Union type must have exactly two types in its union, got {get_args(Generic)}."
+            f"Union type must have exactly two types in its union, "
+            f"got {get_args(Generic)}."
         )
     if NoneType not in get_args(Generic):
         raise TypeError(
@@ -52,6 +54,7 @@ def get_main_type(type_set: Set[Type]) -> Type:
         type_set_copy.remove(NoneType)
     if len(type_set_copy) != 1:
         raise TypeError(
-            f"Expected exactly one type, got {type_set_copy}. If you want to allow NoneType, use Union[int, NoneType]."
+            f"Expected exactly one type, got {type_set_copy}. If you want to allow "
+            "NoneType, use Union[int, NoneType]."
         )
     return type_set_copy.pop()

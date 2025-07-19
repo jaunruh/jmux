@@ -1,10 +1,11 @@
 from enum import Enum
 
 import pytest
+from pydantic import BaseModel
+
 from jmux.awaitable import AwaitableValue, StreamableValues
 from jmux.demux import JMux
 from jmux.error import ObjectMissmatchedError
-from pydantic import BaseModel
 
 
 class SEnum(Enum):

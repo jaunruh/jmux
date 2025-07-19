@@ -10,6 +10,8 @@ from typing import (
     get_type_hints,
 )
 
+from pydantic import BaseModel
+
 from jmux.awaitable import AwaitableValue, IAsyncSink, SinkType, StreamableValues
 from jmux.decoder import IDecoder, StringEscapeDecoder
 from jmux.error import (
@@ -55,7 +57,6 @@ from jmux.types import (
 )
 from jmux.types import Mode as M
 from jmux.types import State as S
-from pydantic import BaseModel
 
 type Primitive = int | float | str | bool | None
 type Emittable = Primitive | "JMux" | Enum
@@ -172,7 +173,8 @@ class JMux(ABC):
             target_instance = TargetType[TargetGenericType]()
             if not issubclass(TargetType, IAsyncSink):
                 raise TypeError(
-                    f"Attribute '{attr_name}' must conform to protocol IAsyncSink, got {TargetType}."
+                    f"Attribute '{attr_name}' must conform to protocol IAsyncSink, "
+                    f"got {TargetType}."
                 )
             setattr(self, attr_name, target_instance)
 
@@ -260,7 +262,8 @@ class JMux(ABC):
     ):
         if len(jmux_subtype_set) != 1:
             raise ForbiddenTypeHintsError(
-                message=f"StreamableValues must have exactly one underlying type, got {jmux_subtype_set}."
+                "StreamableValues must have exactly one underlying type, "
+                f"got {jmux_subtype_set}."
             )
 
         if list in pydantic_main_type_set:
@@ -274,7 +277,11 @@ class JMux(ABC):
                     jmux_model=cls.__name__,
                     pydantic_model=pydantic_model.__name__,
                     attribute=attr_name,
-                    message=f"StreamableValues of type list with subtype {jmux_subtype_set} does not match pydantic model type: {pydantic_subtype_set}",
+                    message=(
+                        "StreamableValues of type list with subtype "
+                        f"{jmux_subtype_set} does not match pydantic model "
+                        f"type: {pydantic_subtype_set}"
+                    ),
                 )
         elif str in pydantic_main_type_set:
             if jmux_subtype_set != pydantic_main_type_set:
@@ -282,7 +289,10 @@ class JMux(ABC):
                     jmux_model=cls.__name__,
                     pydantic_model=pydantic_model.__name__,
                     attribute=attr_name,
-                    message=f"StreamableValues of type string does not match pydantic model type: {pydantic_main_type_set}",
+                    message=(
+                        "StreamableValues of type string does not match pydantic "
+                        f"model type: {pydantic_main_type_set}"
+                    ),
                 )
         else:
             raise ForbiddenTypeHintsError(
@@ -312,7 +322,10 @@ class JMux(ABC):
                 jmux_model=cls.__name__,
                 pydantic_model=pydantic_model.__name__,
                 attribute=attr_name,
-                message=f"AwaitableValue with type {jmux_subtype_set} does not match pydantic model type: {pydantic_main_type_set}",
+                message=(
+                    f"AwaitableValue with type {jmux_subtype_set} does not match "
+                    f"pydantic model type: {pydantic_main_type_set}"
+                ),
             )
 
     @classmethod
@@ -325,7 +338,10 @@ class JMux(ABC):
     ) -> None:
         if not all(t in (AwaitableValue, StreamableValues) for t in jmux_main_type_set):
             raise ForbiddenTypeHintsError(
-                message=f"JMux must have either AwaitableValue or StreamableValues as main type, got {jmux_main_type_set}."
+                message=(
+                    "JMux must have either AwaitableValue or StreamableValues as "
+                    f"main type, got {jmux_main_type_set}."
+                )
             )
 
         if not any(
@@ -334,7 +350,10 @@ class JMux(ABC):
             for elem in jmux_subtype_set
         ):
             raise ForbiddenTypeHintsError(
-                message=f"JMux sub type must be one of the emittable types: {jmux_subtype_set}."
+                message=(
+                    "JMux sub type must be one of the emittable types: "
+                    f"{jmux_subtype_set}."
+                )
             )
 
         if len(pydantic_subtype_set) > 0 and not any(
@@ -343,7 +362,10 @@ class JMux(ABC):
             for elem in pydantic_subtype_set
         ):
             raise ForbiddenTypeHintsError(
-                message=f"Pydantic sub type must be one of the primitive, enum or BaseModel, got: {pydantic_subtype_set}."
+                message=(
+                    "Pydantic sub type must be one of the primitive, enum or "
+                    f"BaseModel, got: {pydantic_subtype_set}."
+                )
             )
 
         if not any(
@@ -352,7 +374,10 @@ class JMux(ABC):
             for elem in pydantic_main_type_set
         ):
             raise ForbiddenTypeHintsError(
-                message=f"Pydantic main type must be one of the primitive, enum, list or BaseModel, got {pydantic_main_type_set}."
+                message=(
+                    "Pydantic main type must be one of the primitive, enum, list "
+                    f"or BaseModel, got {pydantic_main_type_set}."
+                )
             )
 
     async def feed_chunks(self, chunks: str) -> None:
@@ -409,13 +434,19 @@ class JMux(ABC):
                     case S.END:
                         raise ObjectAlreadyClosedError(
                             object_name=self.__class__.__name__,
-                            message=f"Cannot feed more characters to closed JMux object, got '{ch}'",
+                            message=(
+                                "Cannot feed more characters to closed JMux "
+                                f"object, got '{ch}'"
+                            ),
                         )
                     case _:
                         raise UnexpectedStateError(
                             self._pda.stack,
                             self._pda.state,
-                            message="Only START and END states are allowed in the root context.",
+                            message=(
+                                "Only START and END states are allowed in the root "
+                                "context."
+                            ),
                         )
 
             # CONTEXT: Root
@@ -497,7 +528,8 @@ class JMux(ABC):
                                         await self._sink.emit(value)
                                     except ValueError as e:
                                         raise ParsePrimitiveError(
-                                            f"Invalid enum value: {self._decoder.buffer}"
+                                            f"Invalid enum value: "
+                                            f"{self._decoder.buffer}"
                                         ) from e
                                 else:
                                     await self._sink.emit(self._decoder.buffer)
@@ -579,7 +611,10 @@ class JMux(ABC):
                                 ch,
                                 self._pda.stack,
                                 self._pda.state,
-                                "Cannot parse string inside of an array with AwaitableValue sink type.",
+                                (
+                                    "Cannot parse string inside of an array with "
+                                    "AwaitableValue sink type."
+                                ),
                             )
                         if self._decoder.is_terminating_quote(ch):
                             MainType = self._sink.current_underlying_main_generic
@@ -678,7 +713,10 @@ class JMux(ABC):
                     ch,
                     self._pda.stack,
                     self._pda.state,
-                    f"Trying to parse 'string' but underlying generic is '{generic_set}'.",
+                    (
+                        "Trying to parse 'string' but underlying generic is "
+                        f"'{generic_set}'."
+                    ),
                 )
             self._pda.set_state(S.PARSING_STRING)
             self._decoder.reset()
@@ -689,7 +727,10 @@ class JMux(ABC):
                     ch,
                     self._pda.stack,
                     self._pda.state,
-                    f"Trying to parse 'number' but underlying generic is '{generic_set}'.",
+                    (
+                        "Trying to parse 'number' but underlying generic is "
+                        f"'{generic_set}'."
+                    ),
                 )
             self._decoder.push(ch)
             if generic is int:
@@ -704,7 +745,10 @@ class JMux(ABC):
                     ch,
                     self._pda.stack,
                     self._pda.state,
-                    f"Trying to parse 'boolean' but underlying generic is '{generic.__name__}'.",
+                    (
+                        "Trying to parse 'boolean' but underlying generic is "
+                        f"'{generic.__name__}'."
+                    ),
                 )
             self._pda.set_state(S.PARSING_BOOLEAN)
             self._decoder.push(ch)
@@ -715,7 +759,10 @@ class JMux(ABC):
                     ch,
                     self._pda.stack,
                     self._pda.state,
-                    f"Trying to parse 'null' but underlying generic is '{generic.__name__}'.",
+                    (
+                        "Trying to parse 'null' but underlying generic is "
+                        f"'{generic.__name__}'."
+                    ),
                 )
             self._pda.set_state(S.PARSING_NULL)
             self._decoder.push(ch)
@@ -726,7 +773,10 @@ class JMux(ABC):
                     ch,
                     self._pda.stack,
                     self._pda.state,
-                    f"Trying to parse 'object' but underlying generic is '{generic.__name__}'.",
+                    (
+                        f"Trying to parse 'object' but underlying generic is "
+                        f"'{generic.__name__}'."
+                    ),
                 )
             await self._sink.create_and_emit_nested()
             await self._sink.forward_char(ch)
@@ -747,7 +797,8 @@ class JMux(ABC):
                 await self._sink.ensure_closed()
             except NothingEmittedError as e:
                 raise NotAllObjectPropertiesSetError(
-                    f"Unable to finalize. Property '{attr_name}' was not set before closing the JMux instance."
+                    f"Unable to finalize. Property '{attr_name}' was not set before "
+                    "closing the JMux instance."
                 ) from e
 
         self._pda.pop()
@@ -786,7 +837,10 @@ class JMux(ABC):
                     ch,
                     self._pda.stack,
                     self._pda.state,
-                    f"Unexpected character added to buffer for 'boolean': '{self._decoder.buffer}{ch}'.",
+                    (
+                        "Unexpected character added to buffer for 'boolean': "
+                        f"'{self._decoder.buffer}{ch}'."
+                    ),
                 )
         elif self._pda.state is S.PARSING_NULL:
             if ch not in NULL_ALLOWED:
@@ -801,7 +855,10 @@ class JMux(ABC):
                     ch,
                     self._pda.stack,
                     self._pda.state,
-                    f"Unexpected character added to buffer for 'null': '{self._decoder.buffer}{ch}'.",
+                    (
+                        f"Unexpected character added to buffer for 'null': "
+                        f"'{self._decoder.buffer}{ch}'."
+                    ),
                 )
         else:
             raise UnexpectedCharacterError(

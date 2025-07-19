@@ -21,7 +21,8 @@ class SinkType(Enum):
 
 class UnderlyingGenericMixin[T]:
     """
-    A mixin class that provides methods for inspecting the generic types of a class at runtime.
+    A mixin class that provides methods for inspecting the generic types of a 
+    class at runtime.
     """
 
     def get_underlying_generics(self) -> Set[Type[T]]:
@@ -146,7 +147,8 @@ class StreamableValues[T](UnderlyingGenericMixin[T]):
         """
         if self._closed:
             raise SinkClosedError(
-                f"SinkType {self.get_sink_type()}[{self.get_underlying_main_generic()}] is already closed."
+                f"SinkType {self.get_sink_type()}[{self.get_underlying_main_generic()}]"
+                  + " is already closed."
             )
         self._closed = True
         await self._queue.put(None)
@@ -233,7 +235,8 @@ class AwaitableValue[T](UnderlyingGenericMixin[T]):
         """
         if self._is_closed:
             raise SinkClosedError(
-                f"SinkType {self.get_sink_type()}[{self.get_underlying_main_generic().__name__}] is already closed."
+                f"SinkType {self.get_sink_type()}"
+                +"[{self.get_underlying_main_generic().__name__}] is already closed."
             )
         elif not self._event.is_set() and NoneType in self.get_underlying_generics():
             self._event.set()

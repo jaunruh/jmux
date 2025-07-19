@@ -10,7 +10,8 @@ class MissingAttributeError(Exception):
 class UnexpectedAttributeTypeError(Exception):
     def __init__(self, object_name: str, attribute: str, expected_type: str) -> None:
         super().__init__(
-            f"'{object_name}' has attribute '{attribute}' with unexpected type. Attribute must conform to {expected_type}."
+            f"'{object_name}' has attribute '{attribute}' with unexpected type. "
+            f"Attribute must conform to {expected_type}."
         )
 
 
@@ -23,7 +24,8 @@ class EmptyKeyError(Exception):
 class TypeEmitError(Exception):
     def __init__(self, expected_type: str, actual_type: str) -> None:
         super().__init__(
-            f"Cannot emit to current sink. Type mismatch: expected {expected_type}, got {actual_type}"
+            f"Cannot emit to current sink. Type mismatch: expected {expected_type}, "
+            f"got {actual_type}"
         )
         self.expected_type = expected_type
         self.actual_type = actual_type
@@ -85,8 +87,8 @@ class ObjectMissmatchedError(Exception):
         message: str | None = None,
     ) -> None:
         super().__init__(
-            f"JMux object '{jmux_model}' and '{pydantic_model}' are missmatched on attribute '{attribute}'"
-            + (f": {message}" if message else "")
+            f"JMux object '{jmux_model}' and '{pydantic_model}' are missmatched on "
+            f"attribute '{attribute}'" + (f": {message}" if message else "")
         )
 
 
@@ -111,8 +113,8 @@ class UnexpectedCharacterError(Exception):
         ]
         pda_state_str = pda_state.value if isinstance(pda_state, Enum) else pda_state
         super().__init__(
-            f"Received unexpected character '{character}' in state '{pda_state_str}' with stack {pda_stack_str}"
-            + (f": {message}" if message else "")
+            f"Received unexpected character '{character}' in state '{pda_state_str}' "
+            f"with stack {pda_stack_str}" + (f": {message}" if message else "")
         )
 
 
