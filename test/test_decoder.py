@@ -1,7 +1,7 @@
 from typing import List
 
 import pytest
-from jmux.decoder import StringDecoder
+from jmux.decoder import StringEscapeDecoder
 
 
 def codepoint_to_surrogates(codepoint: int):
@@ -40,7 +40,7 @@ def codepoint_to_surrogates(codepoint: int):
 # fmt: on
 @pytest.mark.anyio
 async def test_string_decoder__parameterized(stream: str, expected_string: List[str]):
-    decoder = StringDecoder()
+    decoder = StringEscapeDecoder()
 
     for ch in stream:
         decoder.push(ch)

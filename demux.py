@@ -11,7 +11,7 @@ from typing import (
 )
 
 from jmux.awaitable import AwaitableValue, IAsyncSink, SinkType, StreamableValues
-from jmux.decoder import IDecoder, StringDecoder
+from jmux.decoder import IDecoder, StringEscapeDecoder
 from jmux.error import (
     EmptyKeyError,
     ForbiddenTypeHintsError,
@@ -156,10 +156,9 @@ class JMux(ABC):
     """
 
     def __init__(self):
-        self._history: list[str] = []
         self._instantiate_attributes()
         self._pda: PushDownAutomata[M, S] = PushDownAutomata[M, S](S.START)
-        self._decoder: IDecoder = StringDecoder()
+        self._decoder: IDecoder = StringEscapeDecoder()
         self._sink = Sink[Emittable](self)
 
     def _instantiate_attributes(self) -> None:
@@ -385,7 +384,6 @@ class JMux(ABC):
             UnexpectedStateError: If the parser is in an unexpected state.
             EmptyKeyError: If an empty key is encountered in a JSON object.
         """
-        self._history.append(ch)
         if len(ch) != 1:
             raise UnexpectedCharacterError(
                 character=ch,
