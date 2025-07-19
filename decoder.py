@@ -1,4 +1,17 @@
+from typing import Protocol
+
 from jmux.error import StreamParseError
+
+
+class IDecoder(Protocol):
+    def push(self, ch: str) -> str | None: ...
+
+    def is_terminating_quote(self, ch: str) -> bool: ...
+
+    def reset(self) -> None: ...
+
+    @property
+    def buffer(self) -> str: ...
 
 
 class StringDecoder:
@@ -21,7 +34,7 @@ class StringDecoder:
         self.high_surrogate = None
         self.expect_low_surrogate = False
 
-    def push(self, ch: str) -> None:
+    def push(self, ch: str) -> str | None:
         if self.is_parsing_unicode:
             self.unicode_buffer += ch
             if len(self.unicode_buffer) == 4:
@@ -61,13 +74,15 @@ class StringDecoder:
                 self.is_parsing_unicode = True
                 self.unicode_buffer = ""
                 return
-            self._buffer += self.escape_map.get(ch, ch)
-            return
+            escaped_char = self.escape_map.get(ch, ch)
+            self._buffer += escaped_char
+            return escaped_char
 
         if ch == "\\":
             self._string_escape = True
         else:
             self._buffer += ch
+            return ch
 
     def is_terminating_quote(self, ch: str) -> bool:
         if self._string_escape:

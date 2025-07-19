@@ -11,7 +11,7 @@ from typing import (
 )
 
 from jmux.awaitable import AwaitableValue, IAsyncSink, SinkType, StreamableValues
-from jmux.decoder import StringDecoder
+from jmux.decoder import IDecoder, StringDecoder
 from jmux.error import (
     EmptyKeyError,
     ForbiddenTypeHintsError,
@@ -156,9 +156,10 @@ class JMux(ABC):
     """
 
     def __init__(self):
+        self._history: list[str] = []
         self._instantiate_attributes()
         self._pda: PushDownAutomata[M, S] = PushDownAutomata[M, S](S.START)
-        self._decoder: StringDecoder = StringDecoder()
+        self._decoder: IDecoder = StringDecoder()
         self._sink = Sink[Emittable](self)
 
     def _instantiate_attributes(self) -> None:
@@ -384,6 +385,7 @@ class JMux(ABC):
             UnexpectedStateError: If the parser is in an unexpected state.
             EmptyKeyError: If an empty key is encountered in a JSON object.
         """
+        self._history.append(ch)
         if len(ch) != 1:
             raise UnexpectedCharacterError(
                 character=ch,
@@ -505,12 +507,13 @@ class JMux(ABC):
                             await self._sink.close()
                             self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
                         else:
-                            self._decoder.push(ch)
+                            maybe_char = self._decoder.push(ch)
                             if (
-                                self._sink.current_sink_type
+                                maybe_char is not None
+                                and self._sink.current_sink_type
                                 is SinkType.STREAMABLE_VALUES
                             ):
-                                await self._sink.emit(ch)
+                                await self._sink.emit(maybe_char)
 
                     case _ if self._pda.state in PRIMITIVE_STATES:
                         if ch not in COMMA | OBJECT_CLOSE:
