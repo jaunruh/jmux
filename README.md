@@ -2,13 +2,17 @@
 
 JMux is a powerful Python package that allows you to demultiplex a JSON stream into multiple awaitable variables. It is specifically designed for asynchronous applications that interact with Large Language Models (LLMs) using libraries like `litellm`. When an LLM streams a JSON response, `jmux` enables you to parse and use parts of the JSON object _before_ the complete response has been received, significantly improving responsiveness.
 
+## Inspiration
+
+This package is inspired by `Snapshot Streaming` mentioned in the [`WWDC25: Meet the Foundation Models framework`](https://youtu.be/mJMvFyBvZEk?si=DVIvxzuJOA87lb7I&t=465) keynote by Apple.
+
 ## Features
 
 - **Asynchronous by Design**: Built on top of `asyncio`, JMux is perfect for modern, high-performance Python applications.
 - **Pydantic Integration**: Validate your `JMux` classes against Pydantic models to ensure type safety and consistency.
 - **Awaitable and Streamable Sinks**: Use `AwaitableValue` for single values and `StreamableValues` for streams of values.
 - **Robust Error Handling**: JMux provides a comprehensive set of exceptions to handle parsing errors and other issues.
-- **Lightweight and Zero-dependency**: JMux has no external dependencies, making it easy to integrate into any project.
+- **Lightweight**: JMux has only a few external dependencies, making it easy to integrate into any project.
 
 ## Installation
 
@@ -20,7 +24,7 @@ pip install jmux
 
 ## Usage with LLMs (e.g., `litellm`)
 
-The primary use case for `jmux` is to process streaming JSON responses from LLMs. This allows you to react to parts of the data as it arrives, rather than waiting for the entire JSON object to be transmitted.
+The primary use case for `jmux` is to process streaming JSON responses from LLMs. This allows you to react to parts of the data as it arrives, rather than waiting for the entire JSON object to be transmitted. While this should be obvious, I should mention, that **the order in which the pydantic model defines the properties, defines which stream is filled first**.
 
 Here’s a conceptual example of how you might integrate `jmux` with an LLM call, such as one made with `litellm`:
 
@@ -33,7 +37,7 @@ from jmux import JMux, AwaitableValue, StreamableValues
 
 # 1. Define the Pydantic model for the expected JSON response
 class LlmResponse(BaseModel):
-    thought: str
+    thought: str # **This property is filled first**
     tool_code: str
 
 # 2. Define the corresponding JMux class
@@ -85,6 +89,70 @@ async def process_llm_response():
 if __name__ == "__main__":
     asyncio.run(process_llm_response())
 ```
+
+## Example Implementation
+
+<details>
+<summary>Python Code</summary>
+
+```python
+def create_json_streaming_completion[T: BaseModel, J: IJsonDemuxer](
+        self,
+        messages: List[ILlmMessage],
+        ReturnType: Type[T],
+        JMux: Type[J],
+        retries: int = 3,
+    ) -> StreamResponseTuple[T, J]:
+        try:
+            JMux.assert_conforms_to(ReturnType)
+            litellm_messages = self._convert_messages(messages)
+            jmux_instance: J = JMux()
+
+            async def stream_feeding_llm_call() -> T:
+                nonlocal jmux_instance
+                buffer = ""
+                stream: CustomStreamWrapper = await self._router.acompletion( # see litellm `router`
+                    model=self._internal_model_name.value,
+                    messages=litellm_messages,
+                    stream=True,
+                    num_retries=retries,
+                    response_format=ReturnType,
+                    **self._maybe_google_credentials_param,
+                    **self._model_params.model_dump(exclude_none=True),
+                    **self._additional_params,
+                )
+
+                async for chunk in stream:
+                    content_fragment: str | None = None
+
+                    tool_calls = chunk.choices[0].delta.tool_calls
+                    if tool_calls:
+                        content_fragment = tool_calls[0].function.arguments
+                    elif chunk.choices[0].delta.content:
+                        content_fragment = chunk.choices[0].delta.content
+
+                    if content_fragment:
+                        try:
+                            buffer += content_fragment
+                            await jmux_instance.feed_chunks(content_fragment)
+                        except Exception as e:
+                            logger.warning(f"error in JMux feed_chunks: {e}")
+                            raise e
+
+                return ReturnType.model_validate_json(buffer)
+
+            awaitable_llm_result = create_task(stream_feeding_llm_call())
+            return (awaitable_llm_result, jmux_instance)
+        except Exception as e:
+            logger.warning(f"error in create_json_streaming_completion: {e}")
+            raise e
+```
+
+The code above shows an example implementation that uses a `litellm` router for `acompletion`.
+
+You can either `await awaitable_llm_result` if you need the full result, or use `await jmux_instance.your_awaitable_value` or `async for ele in jmux_instance.your_streamable_values` to access partial results.
+
+</details>
 
 ## Basic Usage
 
@@ -184,30 +252,60 @@ if __name__ == "__main__":
 
 ## API Reference
 
-### `jmux.JMux`
+### Abstract Calss `jmux.JMux`
 
 The abstract base class for creating JSON demultiplexers.
 
-#### `JMux.assert_conforms_to(pydantic_model: Type[BaseModel]) -> None`
+> `JMux.assert_conforms_to(pydantic_model: Type[BaseModel]) -> None`
 
 Asserts that the JMux class conforms to a given Pydantic model.
 
-#### `async JMux.feed_char(ch: str) -> None`
+> `async JMux.feed_char(ch: str) -> None`
 
 Feeds a character to the JMux parser.
 
-#### `async JMux.feed_chunks(chunks: str) -> None`
+> `async JMux.feed_chunks(chunks: str) -> None`
 
 Feeds a string of characters to the JMux parser.
 
-### `jmux.AwaitableValue[T]`
+### Class `jmux.AwaitableValue[T]`
 
-A class that represents a value that will be available in the future.
+A class that represents a value that will be available in the future. You are awaiting the full value and do not get partial results.
 
-### `jmux.StreamableValues[T]`
+Allowed types here are (they can all be combined with `Optional`):
+
+- `int`, `float`, `str`, `bool`, `NoneType`
+- `JMux`
+- `Enum`
+
+In all cases, the corresponding `pydantic.BaseModel` should **not** be `list`
+
+### Class `jmux.StreamableValues[T]`
 
 A class that represents a stream of values that can be asynchronously iterated over.
+
+Allowed types are listed below and should all be wrapped in a `list` on the pydantic model:
+
+- `int`, `float`, `str`, `bool`, `NoneType`
+- `JMux`
+- `Enum`
+
+Additionally the following type is supported without being wrapped into `list`:
+
+- `str`
+
+This allows you to fully stream strings directly to a sink.
 
 ## License
 
 This project is licensed under the terms of the MIT license. See the [LICENSE](LICENSE) file for details.
+
+## Planned Improvements
+
+- Add support for older Python versions
+
+## Contributions
+
+As you might see, this repo has only been created recently and so far I am the only developer working on it. If you want to contribute, reach out via `johannes@unruh.ai` or `johannes.a.unruh@gmail.com`.
+
+If you have suggestions or find any errors in my implementation, feel free to create an issue or also reach out via email.
