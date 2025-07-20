@@ -1,17 +1,23 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "setuptools_scm[toml]>=6.2", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "jmux"
-version = "0.1.0"
+dynamic = ["version"]
 description = "JMux: A Python package for demultiplexing a JSON string into multiple awaitable variables."
 readme = "README.md"
 requires-python = ">=3.12"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+]
 license = { file = "LICENSE" }
 authors = [{ name = "Johannes A.I. Unruh", email = "johannes@unruh.ai" }]
-dependencies = ["anyio>=4.9.0", "pydantic>=2.11.7"]
+dependencies = ["anyio>=4.0.0", "pydantic>=2.0.0"]
 keywords = ["demultiplexer", "python", "package", "json"]
+
+[tool.setuptools_scm]
 
 [project.urls]
 Homepage = "https://github.com/jaunruh/jmux"
@@ -19,7 +25,16 @@ Repository = "https://github.com/jaunruh/jmux"
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-anyio"]
-dev = ["ruff", "pytest", "pytest-anyio", "uv"]
+dev = [
+  "ruff",
+  "pytest",
+  "pytest-anyio",
+  "uv",
+  "build",
+  "twine",
+  "setuptools",
+  "setuptools_scm[toml]",
+]
 
 [tool.ruff]
 # Ruff configuration example
