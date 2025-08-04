@@ -421,7 +421,9 @@ class JMux(ABC):
             case None:
                 match self._pda.state:
                     case S.START:
-                        if ch in OBJECT_OPEN:
+                        if is_json_whitespace(ch):
+                            pass
+                        elif ch in OBJECT_OPEN:
                             self._pda.push(M.ROOT)
                             self._pda.set_state(S.EXPECT_KEY)
                         else:
@@ -432,13 +434,16 @@ class JMux(ABC):
                                 "JSON must start with '{' character.",
                             )
                     case S.END:
-                        raise ObjectAlreadyClosedError(
-                            object_name=self.__class__.__name__,
-                            message=(
-                                "Cannot feed more characters to closed JMux "
-                                f"object, got '{ch}'"
-                            ),
-                        )
+                        if is_json_whitespace(ch):
+                            pass
+                        else:
+                            raise ObjectAlreadyClosedError(
+                                object_name=self.__class__.__name__,
+                                message=(
+                                    "Cannot feed more characters to closed JMux "
+                                    f"object, got '{ch}'"
+                                ),
+                            )
                     case _:
                         raise UnexpectedStateError(
                             self._pda.stack,
