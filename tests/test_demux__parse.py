@@ -149,6 +149,9 @@ async def test_json_demux__parse_correct_stream__assert_state(
     "stream,MaybeExpectedError",
     [
         ("b", UnexpectedCharacterError),
+        ("\n", None),
+        (" ", None),
+        ("\t", None),
         ("{", None),
         ("{p", UnexpectedCharacterError),
         ('{"', None),
@@ -256,6 +259,9 @@ async def test_json_demux__parse_correct_stream__assert_state(
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":3', UnexpectedCharacterError),
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":', None),
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]}', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]}\n', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]} ', None),
+        ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]}\t', None),
         ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1"],"arr_int":[42],"arr_float":[3.14],"arr_bool":[true],"arr_none":[null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]}}', ObjectAlreadyClosedError),
     ],
 )
