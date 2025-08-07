@@ -681,8 +681,16 @@ class JMux(ABC):
                         self._pda.state,
                         "State in object context must be 'parsing_object'",
                     )
-                if ch in OBJECT_CLOSE:
+                if ch in OBJECT_OPEN:
+                    if self._pda.top is M.OBJECT:
+                        await self._sink.forward_char(ch)
+                    self._pda.push(M.OBJECT)
+                elif ch in OBJECT_CLOSE:
                     self._pda.pop()
+                    if self._pda.top is M.OBJECT:
+                        await self._sink.forward_char(ch)
+                        return
+
                     if self._pda.top is M.ROOT:
                         await self._sink.close()
                     self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
