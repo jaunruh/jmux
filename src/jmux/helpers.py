@@ -1,9 +1,19 @@
 from types import NoneType, UnionType
 from typing import Set, Tuple, Type, Union, get_args, get_origin
 
+from jmux.error import ParsePrimitiveError
 
-def is_json_whitespace(ch: str) -> bool:
-    return ch in {" ", "\t", "\n", "\r"}
+
+def str_to_bool(s: str) -> bool:
+    if s == "true":
+        return True
+    elif s == "false":
+        return False
+    else:
+        raise ParsePrimitiveError(
+            f"Cannot convert string '{s}' to boolean. Expected 'true' or 'false', got"
+            f" '{s}'."
+        )
 
 
 def extract_types_from_generic_alias(UnknownType: Type) -> Tuple[Set[Type], Set[Type]]:
