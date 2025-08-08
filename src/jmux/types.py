@@ -21,7 +21,7 @@ class State(Enum):
     PARSING_OBJECT = "parsing_object"
 
 
-PRIMITIVE_STATES: Set[State] = {
+PARSING_PRIMITIVE_STATES: Set[State] = {
     State.PARSING_INTEGER,
     State.PARSING_FLOAT,
     State.PARSING_BOOLEAN,
@@ -55,3 +55,4 @@ NULL_ALLOWED = set("nul")
 JSON_FALSE = "false"
 JSON_TRUE = "true"
 JSON_NULL = "null"
+JSON_WHITESPACE = set(" \t\n\r")

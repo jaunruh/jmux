@@ -32,7 +32,7 @@ from jmux.error import (
 from jmux.helpers import (
     extract_types_from_generic_alias,
     get_main_type,
-    is_json_whitespace,
+    str_to_bool,
 )
 from jmux.pda import PushDownAutomata
 from jmux.types import (
@@ -47,12 +47,13 @@ from jmux.types import (
     JSON_FALSE,
     JSON_NULL,
     JSON_TRUE,
+    JSON_WHITESPACE,
     NULL_ALLOWED,
     NULL_OPEN,
     NUMBER_OPEN,
     OBJECT_CLOSE,
     OBJECT_OPEN,
-    PRIMITIVE_STATES,
+    PARSING_PRIMITIVE_STATES,
     QUOTE,
 )
 from jmux.types import Mode as M
@@ -421,7 +422,7 @@ class JMux(ABC):
             case None:
                 match self._pda.state:
                     case S.START:
-                        if is_json_whitespace(ch):
+                        if ch in JSON_WHITESPACE:
                             pass
                         elif ch in OBJECT_OPEN:
                             self._pda.push(M.ROOT)
@@ -434,7 +435,7 @@ class JMux(ABC):
                                 "JSON must start with '{' character.",
                             )
                     case S.END:
-                        if is_json_whitespace(ch):
+                        if ch in JSON_WHITESPACE:
                             pass
                         else:
                             raise ObjectAlreadyClosedError(
@@ -458,7 +459,7 @@ class JMux(ABC):
             case M.ROOT:
                 match self._pda.state:
                     case S.EXPECT_KEY:
-                        if is_json_whitespace(ch):
+                        if ch in JSON_WHITESPACE:
                             pass
                         elif ch == '"':
                             self._pda.set_state(S.PARSING_KEY)
@@ -485,7 +486,7 @@ class JMux(ABC):
                             self._decoder.push(ch)
 
                     case S.EXPECT_COLON:
-                        if is_json_whitespace(ch):
+                        if ch in JSON_WHITESPACE:
                             pass
                         elif ch in COLON:
                             self._pda.set_state(S.EXPECT_VALUE)
@@ -498,7 +499,7 @@ class JMux(ABC):
                             )
 
                     case S.EXPECT_VALUE:
-                        if is_json_whitespace(ch):
+                        if ch in JSON_WHITESPACE:
                             pass
                         elif res := await self._handle_common__expect_value(ch):
                             if (
@@ -550,20 +551,20 @@ class JMux(ABC):
                             ):
                                 await self._sink.emit(maybe_char)
 
-                    case _ if self._pda.state in PRIMITIVE_STATES:
-                        if ch not in COMMA | OBJECT_CLOSE:
-                            self._assert_primitive_character_allowed_in_state(ch)
-                            self._decoder.push(ch)
-                        else:
+                    case _ if self._pda.state in PARSING_PRIMITIVE_STATES:
+                        if ch in COMMA | OBJECT_CLOSE | JSON_WHITESPACE:
                             await self._parse_primitive()
                             await self._sink.close()
                             self._decoder.reset()
                             self._pda.set_state(S.EXPECT_KEY)
                             if ch in OBJECT_CLOSE:
                                 await self._finalize()
+                        else:
+                            self._assert_primitive_character_allowed_in_state(ch)
+                            self._decoder.push(ch)
 
                     case S.EXPECT_COMMA_OR_EOC:
-                        if is_json_whitespace(ch):
+                        if ch in JSON_WHITESPACE:
                             pass
                         elif ch in COMMA:
                             self._pda.set_state(S.EXPECT_KEY)
@@ -596,7 +597,7 @@ class JMux(ABC):
 
                 match self._pda.state:
                     case S.EXPECT_VALUE:
-                        if is_json_whitespace(ch):
+                        if ch in JSON_WHITESPACE:
                             pass
                         elif await self._handle_common__expect_value(ch):
                             pass
@@ -638,20 +639,20 @@ class JMux(ABC):
                         else:
                             self._decoder.push(ch)
 
-                    case _ if self._pda.state in PRIMITIVE_STATES:
-                        if ch not in COMMA | ARRAY_CLOSE:
-                            self._assert_primitive_character_allowed_in_state(ch)
-                            self._decoder.push(ch)
-                        else:
+                    case _ if self._pda.state in PARSING_PRIMITIVE_STATES:
+                        if ch in COMMA | ARRAY_CLOSE | JSON_WHITESPACE:
                             await self._parse_primitive()
                             self._decoder.reset()
                             if ch in COMMA:
                                 self._pda.set_state(S.EXPECT_VALUE)
                             elif ch in ARRAY_CLOSE:
                                 await self._close_context(S.EXPECT_COMMA_OR_EOC)
+                        else:
+                            self._assert_primitive_character_allowed_in_state(ch)
+                            self._decoder.push(ch)
 
                     case S.EXPECT_COMMA_OR_EOC:
-                        if is_json_whitespace(ch):
+                        if ch in JSON_WHITESPACE:
                             pass
                         elif ch in COMMA:
                             self._pda.set_state(S.EXPECT_VALUE)
@@ -681,8 +682,16 @@ class JMux(ABC):
                         self._pda.state,
                         "State in object context must be 'parsing_object'",
                     )
-                if ch in OBJECT_CLOSE:
+                if ch in OBJECT_OPEN:
+                    if self._pda.top is M.OBJECT:
+                        await self._sink.forward_char(ch)
+                    self._pda.push(M.OBJECT)
+                elif ch in OBJECT_CLOSE:
                     self._pda.pop()
+                    if self._pda.top is M.OBJECT:
+                        await self._sink.forward_char(ch)
+                        return
+
                     if self._pda.top is M.ROOT:
                         await self._sink.close()
                     self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
@@ -699,7 +708,8 @@ class JMux(ABC):
                 )
             await self._sink.emit(None)
         elif self._pda.state is S.PARSING_BOOLEAN:
-            await self._sink.emit(self._decoder.buffer == JSON_TRUE)
+            bool_value = str_to_bool(self._decoder.buffer)
+            await self._sink.emit(bool_value)
         else:
             try:
                 buffer = self._decoder.buffer
