@@ -1,5 +1,6 @@
 from enum import Enum
-from typing import Set
+from types import NoneType, UnionType
+from typing import List, Set, Union
 
 
 class State(Enum):
@@ -56,3 +57,7 @@ JSON_FALSE = "false"
 JSON_TRUE = "true"
 JSON_NULL = "null"
 JSON_WHITESPACE = set(" \t\n\r")
+
+TYPES_LIKE_UNION = {UnionType, Union}
+TYPES_LIKE_NONE = {NoneType, None}
+TYPES_LIKE_LIST = {List, list}

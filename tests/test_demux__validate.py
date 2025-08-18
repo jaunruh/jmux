@@ -72,6 +72,14 @@ class CorrectPydantic_2(BaseModel):
     key_bool: bool | None
 
 
+class CorrectJMux_3(JMux):
+    arr_str: StreamableValues[str]
+
+
+class CorrectPydantic_3(BaseModel):
+    arr_str: list[str] | None
+
+
 class IncorrectJMux_1(JMux):
     key_str: AwaitableValue[str]
 
@@ -107,6 +115,7 @@ class IncorrectPydantic_3(BaseModel):
     [
         (CorrectJMux_1, CorrectPydantic_1, None),
         (CorrectJMux_2, CorrectPydantic_2, None),
+        (CorrectJMux_3, CorrectPydantic_3, None),
         (IncorrectJMux_1, IncorrectPydantic_1, ObjectMissmatchedError),
         (IncorrectJMux_2, IncorrectPydantic_2, ObjectMissmatchedError),
         (IncorrectJMux_3, IncorrectPydantic_3, ObjectMissmatchedError),

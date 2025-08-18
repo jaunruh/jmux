@@ -282,7 +282,7 @@ parse_incorrect_stream__params = [
     parse_incorrect_stream__params,
 )
 @pytest.mark.anyio
-async def test_json_demux__parse_incorrect_stream__assert_error(
+async def test_json_demux__parse_stream__assert_error(
     stream: str, MaybeExpectedError: Type[Exception] | None
 ):
     class SObject(JMux):
@@ -375,7 +375,7 @@ parse_incorrect_stream_with_optionals__params = [
     parse_incorrect_stream_with_optionals__params,
 )
 @pytest.mark.anyio
-async def test_json_demux__parse_incorrect_stream_with_optionals__assert_error(
+async def test_json_demux__parse_stream_with_optionals__assert_error(
     stream: str, MaybeExpectedError: Type[Exception] | None
 ):
     class SObject(JMux):
@@ -416,6 +416,10 @@ parse_correct_stream__double_nested__params = [
     ('{"key_first_nested": {"key_second_nested": {"key_str": "val"}, "key_str": "val', None),
     ('{"key_first_nested": {"key_second_nested": {"key_str": "val"}, "key_str": "val"}', None),
     ('{"key_first_nested": {"key_second_nested": {"key_str": "val"}, "key_str": "val"}}', None),
+    ('{"key_first_nested": {"key_second_nested": {"key_str": "val"}, "key_str": null}}', None),
+    ('{"key_first_nested": {"key_second_nested": {"key_str": "val"}, "key_str": null\n}}', None),
+    ('{"key_first_nested": null}', None),
+    ('{"key_first_nested": null\n}', None),
 ]
 # fmt: on
 @pytest.mark.parametrize(
@@ -423,7 +427,7 @@ parse_correct_stream__double_nested__params = [
     parse_correct_stream__double_nested__params,
 )
 @pytest.mark.anyio
-async def test_json_demux__parse_correct_stream__double_nested(
+async def test_json_demux__parse_stream__double_nested(
     stream: str, MaybeExpectedError: Type[Exception] | None
 ):
     class SObject(JMux):
