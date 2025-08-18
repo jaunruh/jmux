@@ -260,7 +260,7 @@ class JMux(ABC):
             and len(pydantic_subtype_set) > 0
         ) or len(jmux_main_type_set) != 1:
             wrong_obj = "pydantic" if pydantic_wrong else "JMux"
-            wrong_set = jmux_main_type_set if pydantic_wrong else pydantic_main_type_set
+            wrong_set = pydantic_main_type_set if pydantic_wrong else jmux_main_type_set
             raise ForbiddenTypeHintsError(
                 message=(f"Forbidden typing received on {wrong_obj}: {wrong_set}"),
             )
@@ -281,22 +281,20 @@ class JMux(ABC):
                 )
             )
 
-        if not any(
-            issubclass(elem, t)
-            for t in (int, float, str, bool, NoneType, JMux, Enum)
-            for elem in jmux_subtype_set
+        if not cls._all_elements_in_set_a_are_subclass_of_an_element_in_set_b(
+            set_a=jmux_subtype_set,
+            set_b={int, float, str, bool, NoneType, JMux, Enum},
         ):
             raise ForbiddenTypeHintsError(
                 message=(
-                    "JMux sub type must be one of the emittable types: "
+                    "JMux sub type must be one of the emittable types, got: "
                     f"{jmux_subtype_set}."
                 )
             )
 
-        if len(pydantic_subtype_set) > 0 and not any(
-            issubclass(elem, t)
-            for t in (int, float, str, bool, NoneType, BaseModel, Enum)
-            for elem in pydantic_subtype_set
+        if not cls._all_elements_in_set_a_are_subclass_of_an_element_in_set_b(
+            set_a=pydantic_subtype_set,
+            set_b={int, float, str, bool, NoneType, BaseModel, Enum},
         ):
             raise ForbiddenTypeHintsError(
                 message=(
@@ -305,10 +303,9 @@ class JMux(ABC):
                 )
             )
 
-        if not any(
-            issubclass(elem, t)
-            for t in (int, float, str, bool, list, NoneType, BaseModel, Enum)
-            for elem in pydantic_main_type_set
+        if not cls._all_elements_in_set_a_are_subclass_of_an_element_in_set_b(
+            set_a=pydantic_main_type_set,
+            set_b={int, float, str, bool, list, NoneType, BaseModel, Enum},
         ):
             raise ForbiddenTypeHintsError(
                 message=(
@@ -316,6 +313,12 @@ class JMux(ABC):
                     f"or BaseModel, got {pydantic_main_type_set}."
                 )
             )
+
+    @classmethod
+    def _all_elements_in_set_a_are_subclass_of_an_element_in_set_b(
+        cls, set_a: Set[Type], set_b: Set[Type]
+    ) -> bool:
+        return all(any(issubclass(elem, t) for t in set_b) for elem in set_a)
 
     @classmethod
     def _assert_is_allowed_streamable_values(
