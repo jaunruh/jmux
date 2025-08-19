@@ -216,17 +216,11 @@ class JMux(ABC):
                 pydantic_main_type_set,
                 pydantic_subtype_set,
             )
-            if (
-                pydantic_wrong := len(pydantic_main_type_set) != 1
-                and len(pydantic_subtype_set) > 0
-            ) or len(jmux_main_type_set) != 1:
-                wrong_obj = "pydantic" if pydantic_wrong else "JMux"
-                wrong_set = (
-                    jmux_main_type_set if pydantic_wrong else pydantic_main_type_set
-                )
-                raise ForbiddenTypeHintsError(
-                    message=(f"Forbidden typing received on {wrong_obj}: {wrong_set}"),
-                )
+            cls._assert_correct_set_combinations(
+                jmux_main_type_set,
+                pydantic_main_type_set,
+                pydantic_subtype_set,
+            )
 
             if StreamableValues in jmux_main_type_set:
                 cls._assert_is_allowed_streamable_values(
@@ -251,6 +245,80 @@ class JMux(ABC):
                     attribute=attr_name,
                     message="Unexpected main type on JMux",
                 )
+
+    @classmethod
+    def _assert_correct_set_combinations(
+        cls,
+        jmux_main_type_set: Set[Type],
+        pydantic_main_type_set: Set[Type],
+        pydantic_subtype_set: Set[Type],
+    ):
+        if (
+            pydantic_wrong := (
+                len(pydantic_main_type_set) != 1 and list not in pydantic_main_type_set
+            )
+            and len(pydantic_subtype_set) > 0
+        ) or len(jmux_main_type_set) != 1:
+            wrong_obj = "pydantic" if pydantic_wrong else "JMux"
+            wrong_set = pydantic_main_type_set if pydantic_wrong else jmux_main_type_set
+            raise ForbiddenTypeHintsError(
+                message=(f"Forbidden typing received on {wrong_obj}: {wrong_set}"),
+            )
+
+    @classmethod
+    def _assert_only_allowed_types(
+        cls,
+        jmux_main_type_set: Set[Type],
+        jmux_subtype_set: Set[Type],
+        pydantic_main_type_set: Set[Type],
+        pydantic_subtype_set: Set[Type],
+    ) -> None:
+        if not all(t in (AwaitableValue, StreamableValues) for t in jmux_main_type_set):
+            raise ForbiddenTypeHintsError(
+                message=(
+                    "JMux must have either AwaitableValue or StreamableValues as "
+                    f"main type, got {jmux_main_type_set}."
+                )
+            )
+
+        if not cls._all_elements_in_set_a_are_subclass_of_an_element_in_set_b(
+            set_a=jmux_subtype_set,
+            set_b={int, float, str, bool, NoneType, JMux, Enum},
+        ):
+            raise ForbiddenTypeHintsError(
+                message=(
+                    "JMux sub type must be one of the emittable types, got: "
+                    f"{jmux_subtype_set}."
+                )
+            )
+
+        if not cls._all_elements_in_set_a_are_subclass_of_an_element_in_set_b(
+            set_a=pydantic_subtype_set,
+            set_b={int, float, str, bool, NoneType, BaseModel, Enum},
+        ):
+            raise ForbiddenTypeHintsError(
+                message=(
+                    "Pydantic sub type must be one of the primitive, enum or "
+                    f"BaseModel, got: {pydantic_subtype_set}."
+                )
+            )
+
+        if not cls._all_elements_in_set_a_are_subclass_of_an_element_in_set_b(
+            set_a=pydantic_main_type_set,
+            set_b={int, float, str, bool, list, NoneType, BaseModel, Enum},
+        ):
+            raise ForbiddenTypeHintsError(
+                message=(
+                    "Pydantic main type must be one of the primitive, enum, list "
+                    f"or BaseModel, got {pydantic_main_type_set}."
+                )
+            )
+
+    @classmethod
+    def _all_elements_in_set_a_are_subclass_of_an_element_in_set_b(
+        cls, set_a: Set[Type], set_b: Set[Type]
+    ) -> bool:
+        return all(any(issubclass(elem, t) for t in set_b) for elem in set_a)
 
     @classmethod
     def _assert_is_allowed_streamable_values(
@@ -327,58 +395,6 @@ class JMux(ABC):
                     f"AwaitableValue with type {jmux_subtype_set} does not match "
                     f"pydantic model type: {pydantic_main_type_set}"
                 ),
-            )
-
-    @classmethod
-    def _assert_only_allowed_types(
-        cls,
-        jmux_main_type_set: Set[Type],
-        jmux_subtype_set: Set[Type],
-        pydantic_main_type_set: Set[Type],
-        pydantic_subtype_set: Set[Type],
-    ) -> None:
-        if not all(t in (AwaitableValue, StreamableValues) for t in jmux_main_type_set):
-            raise ForbiddenTypeHintsError(
-                message=(
-                    "JMux must have either AwaitableValue or StreamableValues as "
-                    f"main type, got {jmux_main_type_set}."
-                )
-            )
-
-        if not any(
-            issubclass(elem, t)
-            for t in (int, float, str, bool, NoneType, JMux, Enum)
-            for elem in jmux_subtype_set
-        ):
-            raise ForbiddenTypeHintsError(
-                message=(
-                    "JMux sub type must be one of the emittable types: "
-                    f"{jmux_subtype_set}."
-                )
-            )
-
-        if len(pydantic_subtype_set) > 0 and not any(
-            issubclass(elem, t)
-            for t in (int, float, str, bool, NoneType, BaseModel, Enum)
-            for elem in pydantic_subtype_set
-        ):
-            raise ForbiddenTypeHintsError(
-                message=(
-                    "Pydantic sub type must be one of the primitive, enum or "
-                    f"BaseModel, got: {pydantic_subtype_set}."
-                )
-            )
-
-        if not any(
-            issubclass(elem, t)
-            for t in (int, float, str, bool, list, NoneType, BaseModel, Enum)
-            for elem in pydantic_main_type_set
-        ):
-            raise ForbiddenTypeHintsError(
-                message=(
-                    "Pydantic main type must be one of the primitive, enum, list "
-                    f"or BaseModel, got {pydantic_main_type_set}."
-                )
             )
 
     async def feed_chunks(self, chunks: str) -> None:
@@ -556,7 +572,10 @@ class JMux(ABC):
                             await self._parse_primitive()
                             await self._sink.close()
                             self._decoder.reset()
-                            self._pda.set_state(S.EXPECT_KEY)
+                            if ch in JSON_WHITESPACE:
+                                self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
+                            else:
+                                self._pda.set_state(S.EXPECT_KEY)
                             if ch in OBJECT_CLOSE:
                                 await self._finalize()
                         else:

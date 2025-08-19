@@ -1,7 +1,8 @@
-from types import NoneType, UnionType
-from typing import Set, Tuple, Type, Union, get_args, get_origin
+from types import NoneType
+from typing import Set, Tuple, Type, get_args, get_origin
 
 from jmux.error import ParsePrimitiveError
+from jmux.types import TYPES_LIKE_NONE, TYPES_LIKE_UNION
 
 
 def str_to_bool(s: str) -> bool:
@@ -20,8 +21,17 @@ def extract_types_from_generic_alias(UnknownType: Type) -> Tuple[Set[Type], Set[
     Origin: Type | None = get_origin(UnknownType)
     if Origin is None:
         return {UnknownType}, set()
-    if Origin is UnionType or Origin is Union:
-        return deconstruct_type(UnknownType), set()
+    if Origin in TYPES_LIKE_UNION:
+        deconstructed = deconstruct_flat_type(UnknownType)
+        maybe_list_types = [
+            subtypes for subtypes in deconstructed if get_origin(subtypes) is list
+        ]
+        if len(maybe_list_types) == 1:
+            list_based_type = maybe_list_types[0]
+            non_list_types = deconstructed - {list_based_type}
+            main_type, subtype = extract_types_from_generic_alias(list_based_type)
+            return non_list_types | main_type, subtype
+        return deconstructed, set()
 
     type_args = get_args(UnknownType)
     if len(type_args) != 1:
@@ -31,7 +41,7 @@ def extract_types_from_generic_alias(UnknownType: Type) -> Tuple[Set[Type], Set[
         )
 
     Generic: Type = type_args[0]
-    type_set = deconstruct_type(Generic)
+    type_set = deconstruct_flat_type(Generic)
     if len(type_set) == 1:
         return {Origin}, type_set
     if len(type_set) != 2:
@@ -46,16 +56,20 @@ def extract_types_from_generic_alias(UnknownType: Type) -> Tuple[Set[Type], Set[
     return {Origin}, type_set
 
 
-def deconstruct_type(UnknownType: Type) -> Set[Type]:
+def deconstruct_flat_type(UnknownType: Type) -> Set[Type]:
     Origin: Type | None = get_origin(UnknownType)
-    if UnknownType is None:
+    if UnknownType in TYPES_LIKE_NONE:
         return {NoneType}
     if Origin is None:
         return {UnknownType}
-    if not (Origin is UnionType or Origin is Union):
-        return {Origin}
-    type_args = get_args(UnknownType)
-    return set(type_args)
+    if Origin in TYPES_LIKE_UNION:
+        type_args = get_args(UnknownType)
+        return set(type_args)
+    raise TypeError(
+        f"Unknown type {UnknownType} is not a Union or optional type, "
+        "only only those types and their syntactic sugar are supported "
+        "for flat deconstruction."
+    )
 
 
 def get_main_type(type_set: Set[Type]) -> Type:
