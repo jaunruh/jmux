@@ -77,3 +77,6 @@ Thumbs.db
 # Local project configs
 .env
 .env.*
+
+# Cursor
+.cursor/

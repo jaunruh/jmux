@@ -1,11 +1,15 @@
+from __future__ import annotations
+
 from asyncio import Event, Queue
 from enum import Enum
 from types import NoneType
 from typing import (
     AsyncGenerator,
+    Generic,
     Protocol,
     Set,
     Type,
+    TypeVar,
     cast,
     runtime_checkable,
 )
@@ -13,13 +17,15 @@ from typing import (
 from jmux.error import NothingEmittedError, SinkClosedError
 from jmux.helpers import extract_types_from_generic_alias
 
+T = TypeVar("T")
+
 
 class SinkType(Enum):
     STREAMABLE_VALUES = "StreamableValues"
     AWAITABLE_VALUE = "AwaitableValue"
 
 
-class UnderlyingGenericMixin[T]:
+class UnderlyingGenericMixin(Generic[T]):
     """
     A mixin class that provides methods for inspecting the generic types of a 
     class at runtime.
@@ -61,7 +67,7 @@ class UnderlyingGenericMixin[T]:
 
 
 @runtime_checkable
-class IAsyncSink[T](Protocol):
+class IAsyncSink(Protocol[T]):
     """
     An asynchronous sink protocol that defines a common interface for putting, closing,
     and retrieving values from a sink.
@@ -96,7 +102,7 @@ class IAsyncSink[T](Protocol):
         ...
 
 
-class StreamableValues[T](UnderlyingGenericMixin[T]):
+class StreamableValues(UnderlyingGenericMixin[T], Generic[T]):
     """
     A class that represents a stream of values that can be asynchronously iterated over.
     It uses an asyncio.Queue to store the items and allows for putting items into the
@@ -198,7 +204,7 @@ class StreamableValues[T](UnderlyingGenericMixin[T]):
             yield item
 
 
-class AwaitableValue[T](UnderlyingGenericMixin[T]):
+class AwaitableValue(UnderlyingGenericMixin[T], Generic[T]):
     """
     A class that represents a value that will be available in the future.
     It can be awaited to get the value, and it can only be set once.
