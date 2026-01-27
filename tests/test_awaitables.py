@@ -432,3 +432,38 @@ async def test_streamable_values__get_current_after_close():
     await sv.put(42)
     await sv.close()
     assert sv.get_current() == 42
+
+
+@pytest.mark.anyio
+async def test_awaitable_value__close_after_put_succeeds():
+    av = AwaitableValue[int]()
+    await av.put(42)
+    await av.close()
+    result = await av
+    assert result == 42
+
+
+@pytest.mark.anyio
+async def test_awaitable_value__get_underlying_main_generic_nested_object():
+    av = AwaitableValue[NestedObject]()
+    assert av.get_underlying_main_generic() is NestedObject
+
+
+@pytest.mark.anyio
+async def test_streamable_values__aiter_string_values():
+    sv = StreamableValues[str]()
+    await sv.put("hello")
+    await sv.put("world")
+    await sv.close()
+
+    items = []
+    async for item in sv:
+        items.append(item)
+
+    assert items == ["hello", "world"]
+
+
+@pytest.mark.anyio
+async def test_streamable_values__get_underlying_main_generic_string_type():
+    sv = StreamableValues[str]()
+    assert sv.get_underlying_main_generic() is str

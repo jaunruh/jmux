@@ -1129,3 +1129,325 @@ async def test_json_demux__object_with_array_of_primitives(
     assert len(arr_str) == 2
     assert arr_str == parsed_json["arr_str"]
     assert operation_list == expected_operations
+
+
+@pytest.mark.anyio
+async def test_get_current_awaitable_after_feed():
+    class SObject(JMux):
+        key: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key": "value"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert s_object.key.get_current() == "value"
+
+
+@pytest.mark.anyio
+async def test_get_current_streamable_during_feed():
+    class SObject(JMux):
+        arr: StreamableValues[int]
+
+    s_object = SObject()
+    stream = '{"arr": [1, 2, 3]}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert s_object.arr.get_current() == 3
+
+
+@pytest.mark.anyio
+async def test_get_current_int_array():
+    class SObject(JMux):
+        nums: StreamableValues[int]
+
+    s_object = SObject()
+    stream = '{"nums": [10, 20, 30]}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert s_object.nums.get_current() == 30
+
+
+@pytest.mark.anyio
+async def test_awaitable_closed_after_complete_parse():
+    class SObject(JMux):
+        key: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key": "value"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert s_object.key._is_closed is True
+
+
+@pytest.mark.anyio
+async def test_streamable_closed_after_complete_parse():
+    class SObject(JMux):
+        arr: StreamableValues[int]
+
+    s_object = SObject()
+    stream = '{"arr": [1, 2, 3]}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert s_object.arr._closed is True
+
+
+@pytest.mark.anyio
+async def test_optional_awaitable_closed_with_null():
+    class SObject(JMux):
+        key: AwaitableValue[str | None]
+
+    s_object = SObject()
+    stream = '{"key": null}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert s_object.key._is_closed is True
+    assert await s_object.key is None
+
+
+@pytest.mark.anyio
+async def test_empty_array():
+    class SObject(JMux):
+        arr: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr": []}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    items = []
+    async for item in s_object.arr:
+        items.append(item)
+
+    assert items == []
+
+
+@pytest.mark.anyio
+async def test_empty_string():
+    class SObject(JMux):
+        key: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key": ""}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert await s_object.key == ""
+
+
+@pytest.mark.anyio
+async def test_empty_nested_object():
+    class SNested(JMux):
+        pass
+
+    class SObject(JMux):
+        nested: AwaitableValue[SNested]
+
+    s_object = SObject()
+    stream = '{"nested": {}}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    nested = await s_object.nested
+    assert isinstance(nested, SNested)
+
+
+@pytest.mark.anyio
+async def test_array_of_empty_strings():
+    class SObject(JMux):
+        arr: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr": ["", "", ""]}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    items = []
+    async for item in s_object.arr:
+        items.append(item)
+
+    assert items == ["", "", ""]
+
+
+@pytest.mark.anyio
+async def test_multiple_empty_arrays():
+    class SObject(JMux):
+        arr1: StreamableValues[str]
+        arr2: StreamableValues[int]
+
+    s_object = SObject()
+    stream = '{"arr1": [], "arr2": []}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    items1 = []
+    async for item in s_object.arr1:
+        items1.append(item)
+
+    items2 = []
+    async for item in s_object.arr2:
+        items2.append(item)
+
+    assert items1 == []
+    assert items2 == []
+
+
+@pytest.mark.anyio
+async def test_feed_chunks_simple():
+    class SObject(JMux):
+        key: AwaitableValue[str]
+
+    s_object = SObject()
+    await s_object.feed_chunks('{"key": "value"}')
+
+    assert await s_object.key == "value"
+
+
+@pytest.mark.anyio
+async def test_feed_chunks_partial():
+    class SObject(JMux):
+        key: AwaitableValue[str]
+
+    s_object = SObject()
+    await s_object.feed_chunks('{"key": ')
+    await s_object.feed_chunks('"value"}')
+
+    assert await s_object.key == "value"
+
+
+@pytest.mark.anyio
+async def test_feed_chunks_with_whitespace_before_close():
+    class SObject(JMux):
+        key: AwaitableValue[str]
+
+    s_object = SObject()
+    await s_object.feed_chunks('{"key": "value"   }')
+
+    assert await s_object.key == "value"
+
+
+@pytest.mark.anyio
+async def test_feed_chunks_with_trailing_whitespace():
+    class SObject(JMux):
+        key: AwaitableValue[str]
+
+    s_object = SObject()
+    await s_object.feed_chunks('{"key": "value"}\n\t ')
+
+    assert await s_object.key == "value"
+
+
+@pytest.mark.anyio
+async def test_negative_numbers():
+    class SObject(JMux):
+        num: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"num": -42}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert await s_object.num == -42
+
+
+@pytest.mark.anyio
+async def test_negative_float():
+    class SObject(JMux):
+        num: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"num": -3.14}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert await s_object.num == -3.14
+
+
+@pytest.mark.anyio
+async def test_zero_values():
+    class SObject(JMux):
+        int_zero: AwaitableValue[int]
+        float_zero: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"int_zero": 0, "float_zero": 0.0}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert await s_object.int_zero == 0
+    assert await s_object.float_zero == 0.0
+
+
+@pytest.mark.anyio
+async def test_scientific_notation():
+    class SObject(JMux):
+        num: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"num": 1.5e10}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert await s_object.num == 1.5e10
+
+
+@pytest.mark.anyio
+async def test_large_integer():
+    class SObject(JMux):
+        num: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"num": 99999999999999999999}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert await s_object.num == 99999999999999999999
+
+
+@pytest.mark.anyio
+async def test_escaped_string_content():
+    class SObject(JMux):
+        key: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key": "hello\\nworld\\ttab"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert await s_object.key == "hello\nworld\ttab"
+
+
+@pytest.mark.anyio
+async def test_string_with_quotes():
+    class SObject(JMux):
+        key: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key": "say \\"hello\\""}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    assert await s_object.key == 'say "hello"'

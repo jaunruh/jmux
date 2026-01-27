@@ -259,8 +259,6 @@ class JMux(ABC):
             raise e
         except ObjectMissmatchedError as e:
             raise e
-        # except ForbiddenTypeHintsError as e:
-        #     raise e
         except Exception as e:
             raise ObjectMissmatchedError(
                 jmux_model=cls.__name__,

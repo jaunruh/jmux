@@ -375,3 +375,51 @@ def test_string_decoder__escape_map_access():
     assert decoder.escape_map["n"] == "\n"
     assert decoder.escape_map["r"] == "\r"
     assert decoder.escape_map["t"] == "\t"
+
+
+def test_string_decoder__unicode_escape_sets_parsing_flag():
+    decoder = StringEscapeDecoder()
+    decoder.push("\\")
+    decoder.push("u")
+    assert decoder._is_parsing_unicode is True
+
+
+def test_string_decoder__unicode_escape_after_regular_text():
+    decoder = StringEscapeDecoder()
+    for ch in "hello\\u0041world":
+        decoder.push(ch)
+    assert decoder.buffer == "helloAworld"
+
+
+def test_string_decoder__escaped_backslash_followed_by_quote():
+    decoder = StringEscapeDecoder()
+    for ch in "\\\\\\\"":
+        decoder.push(ch)
+    assert decoder.buffer == '\\"'
+
+
+def test_string_decoder__terminating_quote_after_regular_text():
+    decoder = StringEscapeDecoder()
+    for ch in "hello":
+        decoder.push(ch)
+    assert decoder.is_terminating_quote('"') is True
+
+
+def test_string_decoder__reset_mid_escape():
+    decoder = StringEscapeDecoder()
+    decoder.push("\\")
+    decoder.push("u")
+    decoder.push("0")
+    decoder.push("0")
+    decoder.reset()
+    assert decoder.buffer == ""
+    assert decoder._is_parsing_unicode is False
+    assert decoder._string_escape is False
+
+
+def test_string_decoder__special_json_characters():
+    decoder = StringEscapeDecoder()
+    stream = "{}[],:123"
+    for ch in stream:
+        decoder.push(ch)
+    assert decoder.buffer == "{}[],:123"

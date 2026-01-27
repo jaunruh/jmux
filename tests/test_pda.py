@@ -201,3 +201,66 @@ def test_pda_many_pop_operations():
 
     assert pda.stack == []
     assert pda.top is None
+
+
+def test_pda_top_returns_last_pushed_incrementally():
+    pda = PushDownAutomata[Mode, State](State.START)
+    assert pda.top is None
+
+    pda.push(Mode.ROOT)
+    assert pda.top == Mode.ROOT
+
+    pda.push(Mode.OBJECT)
+    assert pda.top == Mode.OBJECT
+
+    pda.push(Mode.ARRAY)
+    assert pda.top == Mode.ARRAY
+
+
+def test_pda_state_is_readable_property():
+    pda = PushDownAutomata[Mode, State](State.START)
+    assert pda.state == State.START
+
+    pda.set_state(State.EXPECT_KEY)
+    state_value = pda.state
+    assert state_value == State.EXPECT_KEY
+    assert isinstance(state_value, State)
+
+
+def test_pda_typical_json_parsing_flow():
+    pda = PushDownAutomata[Mode, State](State.START)
+
+    pda.set_state(State.EXPECT_KEY)
+    pda.push(Mode.ROOT)
+    assert pda.state == State.EXPECT_KEY
+    assert pda.top == Mode.ROOT
+
+    pda.set_state(State.PARSING_KEY)
+    assert pda.state == State.PARSING_KEY
+
+    pda.set_state(State.EXPECT_COLON)
+    pda.set_state(State.EXPECT_VALUE)
+    pda.set_state(State.PARSING_STRING)
+
+    pda.push(Mode.ARRAY)
+    assert pda.stack == [Mode.ROOT, Mode.ARRAY]
+
+    pda.set_state(State.EXPECT_COMMA_OR_EOC)
+    pda.pop()
+    assert pda.top == Mode.ROOT
+
+    pda.set_state(State.END)
+    pda.pop()
+    assert pda.stack == []
+    assert pda.state == State.END
+
+
+def test_pda_stack_returns_full_contents():
+    pda = PushDownAutomata[Mode, State](State.START)
+    pda.push(Mode.ROOT)
+    pda.push(Mode.OBJECT)
+    pda.push(Mode.ARRAY)
+
+    stack_contents = pda.stack
+    assert stack_contents == [Mode.ROOT, Mode.OBJECT, Mode.ARRAY]
+    assert len(stack_contents) == 3
