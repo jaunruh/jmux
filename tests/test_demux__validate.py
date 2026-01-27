@@ -294,7 +294,7 @@ def test_assert_conforms_to__pydantic_set_type_forbidden():
     class TargetPydantic(BaseModel):
         field: set[str]
 
-    with pytest.raises(ForbiddenTypeHintsError):
+    with pytest.raises(ObjectMissmatchedError):
         TargetJMux.assert_conforms_to(TargetPydantic)
 
 

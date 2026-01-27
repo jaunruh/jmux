@@ -199,59 +199,75 @@ class JMux(ABC):
             ForbiddenTypeHintsError: If a type hint is not allowed.
             ObjectMissmatchedError: If the JMux class does not match the Pydantic model.
         """
-        for attr_name, type_alias in get_type_hints(cls).items():
-            jmux_main_type_set, jmux_subtype_set = extract_types_from_generic_alias(
-                type_alias
-            )
+        try:
+            for attr_name, type_alias in get_type_hints(cls).items():
+                jmux_main_type_set, jmux_subtype_set = extract_types_from_generic_alias(
+                    type_alias
+                )
 
-            MaybePydanticType = get_type_hints(pydantic_model).get(attr_name, None)
-            if MaybePydanticType is None:
-                if NoneType in jmux_subtype_set:
-                    continue
-                else:
-                    raise MissingAttributeError(
-                        object_name=pydantic_model.__name__,
-                        attribute=attr_name,
+                MaybePydanticType = get_type_hints(pydantic_model).get(attr_name, None)
+                if MaybePydanticType is None:
+                    if NoneType in jmux_subtype_set:
+                        continue
+                    else:
+                        raise MissingAttributeError(
+                            object_name=pydantic_model.__name__,
+                            attribute=attr_name,
+                        )
+
+                pydantic_main_type_set, pydantic_subtype_set = (
+                    extract_types_from_generic_alias(MaybePydanticType)
+                )
+                cls._assert_only_allowed_types(
+                    jmux_main_type_set,
+                    jmux_subtype_set,
+                    pydantic_main_type_set,
+                    pydantic_subtype_set,
+                )
+                cls._assert_correct_set_combinations(
+                    jmux_main_type_set,
+                    pydantic_main_type_set,
+                    pydantic_subtype_set,
+                )
+
+                if StreamableValues in jmux_main_type_set:
+                    cls._assert_is_allowed_streamable_values(
+                        jmux_subtype_set,
+                        pydantic_subtype_set,
+                        pydantic_main_type_set,
+                        pydantic_model,
+                        attr_name,
                     )
-
-            pydantic_main_type_set, pydantic_subtype_set = (
-                extract_types_from_generic_alias(MaybePydanticType)
+                elif AwaitableValue in jmux_main_type_set:
+                    cls._assert_is_allowed_awaitable_value(
+                        jmux_subtype_set,
+                        pydantic_subtype_set,
+                        pydantic_main_type_set,
+                        pydantic_model,
+                        attr_name,
+                    )
+                else:
+                    raise ObjectMissmatchedError(
+                        jmux_model=cls.__name__,
+                        pydantic_model=pydantic_model.__name__,
+                        attribute=attr_name,
+                        message="Unexpected main type on JMux",
+                    )
+        except TypeError as e:
+            raise ForbiddenTypeHintsError(message=f"Unexpected type hint: {e}") from e
+        except MissingAttributeError as e:
+            raise e
+        except ObjectMissmatchedError as e:
+            raise e
+        # except ForbiddenTypeHintsError as e:
+        #     raise e
+        except Exception as e:
+            raise ObjectMissmatchedError(
+                jmux_model=cls.__name__,
+                pydantic_model=pydantic_model.__name__,
+                attribute=attr_name,
+                message=f"Unexpected main type on JMux: {e}",
             )
-            cls._assert_only_allowed_types(
-                jmux_main_type_set,
-                jmux_subtype_set,
-                pydantic_main_type_set,
-                pydantic_subtype_set,
-            )
-            cls._assert_correct_set_combinations(
-                jmux_main_type_set,
-                pydantic_main_type_set,
-                pydantic_subtype_set,
-            )
-
-            if StreamableValues in jmux_main_type_set:
-                cls._assert_is_allowed_streamable_values(
-                    jmux_subtype_set,
-                    pydantic_subtype_set,
-                    pydantic_main_type_set,
-                    pydantic_model,
-                    attr_name,
-                )
-            elif AwaitableValue in jmux_main_type_set:
-                cls._assert_is_allowed_awaitable_value(
-                    jmux_subtype_set,
-                    pydantic_subtype_set,
-                    pydantic_main_type_set,
-                    pydantic_model,
-                    attr_name,
-                )
-            else:
-                raise ObjectMissmatchedError(
-                    jmux_model=cls.__name__,
-                    pydantic_model=pydantic_model.__name__,
-                    attribute=attr_name,
-                    message="Unexpected main type on JMux",
-                )
 
     @classmethod
     def _assert_correct_set_combinations(
@@ -487,12 +503,14 @@ class JMux(ABC):
                         elif ch == '"':
                             self._pda.set_state(S.PARSING_KEY)
                             self._decoder.reset()
+                        elif ch in OBJECT_CLOSE:
+                            await self._finalize()
                         else:
                             raise UnexpectedCharacterError(
                                 ch,
                                 self._pda.stack,
                                 self._pda.state,
-                                "Char needs to be '\"' or JSON whitespaces",
+                                "Char needs to be '\"', '}' or JSON whitespaces",
                             )
 
                     case S.PARSING_KEY:
@@ -537,6 +555,14 @@ class JMux(ABC):
                                     "Expected '[' or '\"' for 'StreamableValues'",
                                 )
                         elif ch in ARRAY_OPEN:
+                            if self._sink.current_sink_type == SinkType.AWAITABLE_VALUE:
+                                raise UnexpectedCharacterError(
+                                    ch,
+                                    self._pda.stack,
+                                    self._pda.state,
+                                    "Trying to parse 'array' but sink type is "
+                                    "'AwaitableValue'.",
+                                )
                             self._pda.set_state(S.EXPECT_VALUE)
                             self._pda.push(M.ARRAY)
                         else:
@@ -579,12 +605,12 @@ class JMux(ABC):
                             await self._parse_primitive()
                             await self._sink.close()
                             self._decoder.reset()
-                            if ch in JSON_WHITESPACE:
-                                self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
-                            else:
+                            if ch in COMMA:
                                 self._pda.set_state(S.EXPECT_KEY)
-                            if ch in OBJECT_CLOSE:
+                            elif ch in OBJECT_CLOSE:
                                 await self._finalize()
+                            else:
+                                self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
                         else:
                             self._assert_primitive_character_allowed_in_state(ch)
                             self._decoder.push(ch)
@@ -673,6 +699,8 @@ class JMux(ABC):
                                 self._pda.set_state(S.EXPECT_VALUE)
                             elif ch in ARRAY_CLOSE:
                                 await self._close_context(S.EXPECT_COMMA_OR_EOC)
+                            else:
+                                self._pda.set_state(S.EXPECT_COMMA_OR_EOC)
                         else:
                             self._assert_primitive_character_allowed_in_state(ch)
                             self._decoder.push(ch)

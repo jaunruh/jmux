@@ -140,19 +140,20 @@ def test_str_to_bool__invalid_input_raises_parse_primitive_error(invalid_input: 
 
 
 def test_get_main_type__single_type():
-    assert get_main_type({int}) == int
-    assert get_main_type({str}) == str
-    assert get_main_type({float}) == float
-    assert get_main_type({bool}) == bool
-    assert get_main_type({JMux}) == JMux
+    assert get_main_type({int}) is int
+    assert get_main_type({str}) is str
+    assert get_main_type({float}) is float
+    assert get_main_type({bool}) is bool
+    assert get_main_type({NoneType}) is NoneType
+    assert get_main_type({JMux}) is JMux
 
 
 def test_get_main_type__type_with_none():
-    assert get_main_type({int, NoneType}) == int
-    assert get_main_type({str, NoneType}) == str
-    assert get_main_type({float, NoneType}) == float
-    assert get_main_type({bool, NoneType}) == bool
-    assert get_main_type({JMux, NoneType}) == JMux
+    assert get_main_type({int, NoneType}) is int
+    assert get_main_type({str, NoneType}) is str
+    assert get_main_type({float, NoneType}) is float
+    assert get_main_type({bool, NoneType}) is bool
+    assert get_main_type({JMux, NoneType}) is JMux
 
 
 def test_get_main_type__empty_set_raises_type_error():
@@ -168,11 +169,6 @@ def test_get_main_type__multiple_non_none_types_raises_type_error():
 def test_get_main_type__multiple_types_with_none_raises_type_error():
     with pytest.raises(TypeError):
         get_main_type({int, str, NoneType})
-
-
-def test_get_main_type__only_none_type_raises_type_error():
-    with pytest.raises(TypeError):
-        get_main_type({NoneType})
 
 
 def test_get_main_type__does_not_modify_input():

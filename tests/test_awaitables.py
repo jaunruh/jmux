@@ -176,13 +176,13 @@ async def test_awaitable_value__get_current_after_put():
 @pytest.mark.anyio
 async def test_awaitable_value__get_underlying_main_generic_single_type():
     av = AwaitableValue[int]()
-    assert av.get_underlying_main_generic() == int
+    assert av.get_underlying_main_generic() is int
 
 
 @pytest.mark.anyio
 async def test_awaitable_value__get_underlying_main_generic_optional():
     av = AwaitableValue[str | None]()
-    assert av.get_underlying_main_generic() == str
+    assert av.get_underlying_main_generic() is str
 
 
 @pytest.mark.parametrize(
@@ -338,7 +338,7 @@ async def test_streamable_values__get_current_returns_last_item():
 @pytest.mark.anyio
 async def test_streamable_values__get_underlying_main_generic():
     sv = StreamableValues[float]()
-    assert sv.get_underlying_main_generic() == float
+    assert sv.get_underlying_main_generic() is float
 
 
 @pytest.mark.parametrize(
