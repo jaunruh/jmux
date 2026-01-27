@@ -1,7 +1,12 @@
-from typing import List
+from __future__ import annotations
+
+from typing import Generic, List, Optional, TypeVar
+
+Context = TypeVar("Context")
+State = TypeVar("State")
 
 
-class PushDownAutomata[Context, State]:
+class PushDownAutomata(Generic[Context, State]):
     def __init__(self, start_state: State) -> None:
         self._stack: List[Context] = []
         self._state: State = start_state
@@ -15,7 +20,7 @@ class PushDownAutomata[Context, State]:
         return self._stack
 
     @property
-    def top(self) -> Context | None:
+    def top(self) -> Optional[Context]:
         if not self._stack:
             return None
         return self._stack[-1]

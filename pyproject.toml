@@ -7,7 +7,7 @@ name = "jmux"
 dynamic = ["version"]
 description = "JMux: A Python package for demultiplexing a JSON string into multiple awaitable variables."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 classifiers = [
   "Programming Language :: Python :: 3",
   "Operating System :: OS Independent",

@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 from abc import ABC
 from enum import Enum
 from types import NoneType
 from typing import (
+    Generic,
     Optional,
     Set,
     Type,
+    TypeVar,
+    Union,
     get_args,
     get_origin,
     get_type_hints,
@@ -59,11 +64,13 @@ from jmux.types import (
 from jmux.types import Mode as M
 from jmux.types import State as S
 
-type Primitive = int | float | str | bool | None
-type Emittable = Primitive | "JMux" | Enum
+Primitive = Union[int, float, str, bool, None]
+Emittable = Union[int, float, str, bool, None, "JMux", Enum]
+
+T = TypeVar("T")
 
 
-class Sink[T: Emittable]:
+class Sink(Generic[T]):
     def __init__(self, delegate: "JMux"):
         self._current_key: Optional[str] = None
         self._current_sink: Optional[IAsyncSink[T]] = None

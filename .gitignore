@@ -24,6 +24,7 @@ var/
 *.egg
 
 # Virtual environment
+uv.lock
 venv/
 ENV/
 env/
@@ -77,3 +78,6 @@ Thumbs.db
 # Local project configs
 .env
 .env.*
+
+# Cursor
+.cursor/
