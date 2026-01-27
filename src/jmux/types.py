@@ -9,8 +9,10 @@ class State(Enum):
     ERROR = "error"
     # expect
     EXPECT_KEY = "expect_key"
+    EXPECT_KEY_AFTER_COMMA = "expect_key_after_comma"
     EXPECT_COLON = "expect_colon"
     EXPECT_VALUE = "expect_value"
+    EXPECT_VALUE_AFTER_COMMA = "expect_value_after_comma"
     EXPECT_COMMA_OR_EOC = "expect_comma_or_eoc"
     # parsing
     PARSING_KEY = "parsing_key"

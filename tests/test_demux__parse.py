@@ -31,26 +31,26 @@ parse_correct_stream__params = [
     ('{"key_str": "val', [Mode.ROOT], State.PARSING_STRING),
     ('{"key_str": "val"', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
     ('{"key_str": "val" \t\n', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
-    ('{"key_str": "val",', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val",', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int', [Mode.ROOT], State.PARSING_KEY),
     ('{"key_str": "val","key_int"', [Mode.ROOT], State.EXPECT_COLON),
     ('{"key_str": "val","key_int":', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int": \t\n', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":4', [Mode.ROOT], State.PARSING_INTEGER),
     ('{"key_str": "val","key_int":42', [Mode.ROOT], State.PARSING_INTEGER),
-    ('{"key_str": "val","key_int":42,', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val","key_int":42,', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"', [Mode.ROOT], State.PARSING_KEY),
     ('{"key_str": "val","key_int":42,"key_float"', [Mode.ROOT], State.EXPECT_COLON),
     ('{"key_str": "val","key_int":42,"key_float":', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":3.14', [Mode.ROOT], State.PARSING_FLOAT),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":t', [Mode.ROOT], State.PARSING_BOOLEAN),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true', [Mode.ROOT], State.PARSING_BOOLEAN),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":n', [Mode.ROOT], State.PARSING_NULL),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', [Mode.ROOT], State.EXPECT_KEY),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream', [Mode.ROOT], State.PARSING_KEY),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream', [Mode.ROOT], State.PARSING_STRING),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum', [Mode.ROOT], State.PARSING_KEY),
@@ -62,25 +62,25 @@ parse_correct_stream__params = [
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str"', [Mode.ROOT, Mode.OBJECT], State.PARSING_OBJECT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"', [Mode.ROOT, Mode.OBJECT], State.PARSING_OBJECT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"}', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":[', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["', [Mode.ROOT, Mode.ARRAY], State.PARSING_STRING),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1"', [Mode.ROOT, Mode.ARRAY], State.EXPECT_COMMA_OR_EOC),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1" \t\n', [Mode.ROOT, Mode.ARRAY], State.EXPECT_COMMA_OR_EOC),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1",', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1", \t\n', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2",', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1",', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1", \t\n', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2",', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3', [Mode.ROOT, Mode.ARRAY], State.PARSING_STRING),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"', [Mode.ROOT, Mode.ARRAY], State.EXPECT_COMMA_OR_EOC),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"]', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42', [Mode.ROOT, Mode.ARRAY], State.PARSING_INTEGER),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3', [Mode.ROOT, Mode.ARRAY], State.PARSING_FLOAT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14', [Mode.ROOT, Mode.ARRAY], State.PARSING_FLOAT),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4]', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true', [Mode.ROOT, Mode.ARRAY], State.PARSING_BOOLEAN),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false', [Mode.ROOT, Mode.ARRAY], State.PARSING_BOOLEAN),
@@ -95,7 +95,7 @@ parse_correct_stream__params = [
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{', [Mode.ROOT, Mode.ARRAY, Mode.OBJECT], State.PARSING_OBJECT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_s', [Mode.ROOT, Mode.ARRAY, Mode.OBJECT], State.PARSING_OBJECT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"}', [Mode.ROOT, Mode.ARRAY], State.EXPECT_COMMA_OR_EOC),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},{"key_str":"nes', [Mode.ROOT, Mode.ARRAY, Mode.OBJECT], State.PARSING_OBJECT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}', [Mode.ROOT, Mode.ARRAY], State.EXPECT_COMMA_OR_EOC),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
@@ -160,6 +160,7 @@ parse_incorrect_stream__params = [
     ('{"key_str"', None),
     ('{"key_str": ""', None),
     ('{"key_str": "" ', None),
+    ('{"key_str": "val",}', UnexpectedCharacterError), # Trailing comma in object
     ('{"key_str": "val","key_int":4p', UnexpectedCharacterError),
     ('{"key_str": "val","key_int":4t', UnexpectedCharacterError),
     ('{"key_str": "val","key_int":420', None),
@@ -225,6 +226,7 @@ parse_incorrect_stream__params = [
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":p', UnexpectedCharacterError),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":[[', UnexpectedCharacterError),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":[]', None), # Allow empty arrays
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1",]', UnexpectedCharacterError), # Trailing comma in array
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":[nu', UnexpectedCharacterError),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["', None),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1",}', UnexpectedCharacterError),
@@ -1090,9 +1092,9 @@ async def test_demux_parse__10000_char_string():
 async def test_demux_parse__long_key_name():
     long_key = "k" * 500
 
-    SObject = type("SObject", (JMux,), {
-        "__annotations__": {long_key: AwaitableValue[str]}
-    })
+    SObject = type(
+        "SObject", (JMux,), {"__annotations__": {long_key: AwaitableValue[str]}}
+    )
 
     s_object = SObject()
     stream = f'{{"{long_key}": "value"}}'

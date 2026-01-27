@@ -511,6 +511,27 @@ class JMux(ABC):
                                 "Char needs to be '\"', '}' or JSON whitespaces",
                             )
 
+                    case S.EXPECT_KEY_AFTER_COMMA:
+                        if ch in JSON_WHITESPACE:
+                            pass
+                        elif ch == '"':
+                            self._pda.set_state(S.PARSING_KEY)
+                            self._decoder.reset()
+                        elif ch in OBJECT_CLOSE:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "Trailing comma in object is not allowed.",
+                            )
+                        else:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "Char needs to be '\"' or JSON whitespaces",
+                            )
+
                     case S.PARSING_KEY:
                         if self._decoder.is_terminating_quote(ch):
                             buffer = self._decoder.buffer
@@ -604,7 +625,7 @@ class JMux(ABC):
                             await self._sink.close()
                             self._decoder.reset()
                             if ch in COMMA:
-                                self._pda.set_state(S.EXPECT_KEY)
+                                self._pda.set_state(S.EXPECT_KEY_AFTER_COMMA)
                             elif ch in OBJECT_CLOSE:
                                 await self._finalize()
                             else:
@@ -617,7 +638,7 @@ class JMux(ABC):
                         if ch in JSON_WHITESPACE:
                             pass
                         elif ch in COMMA:
-                            self._pda.set_state(S.EXPECT_KEY)
+                            self._pda.set_state(S.EXPECT_KEY_AFTER_COMMA)
                         elif ch in OBJECT_CLOSE:
                             await self._finalize()
                         else:
@@ -661,6 +682,26 @@ class JMux(ABC):
                                 "Expected value, ']' or white space",
                             )
 
+                    case S.EXPECT_VALUE_AFTER_COMMA:
+                        if ch in JSON_WHITESPACE:
+                            pass
+                        elif await self._handle_common__expect_value(ch):
+                            pass
+                        elif ch in ARRAY_CLOSE:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "Trailing comma in array is not allowed.",
+                            )
+                        else:
+                            raise UnexpectedCharacterError(
+                                ch,
+                                self._pda.stack,
+                                self._pda.state,
+                                "Expected value or white space",
+                            )
+
                     case S.PARSING_STRING:
                         if self._sink.current_sink_type is SinkType.AWAITABLE_VALUE:
                             raise UnexpectedCharacterError(
@@ -694,7 +735,7 @@ class JMux(ABC):
                             await self._parse_primitive()
                             self._decoder.reset()
                             if ch in COMMA:
-                                self._pda.set_state(S.EXPECT_VALUE)
+                                self._pda.set_state(S.EXPECT_VALUE_AFTER_COMMA)
                             elif ch in ARRAY_CLOSE:
                                 await self._close_context(S.EXPECT_COMMA_OR_EOC)
                             else:
@@ -707,7 +748,7 @@ class JMux(ABC):
                         if ch in JSON_WHITESPACE:
                             pass
                         elif ch in COMMA:
-                            self._pda.set_state(S.EXPECT_VALUE)
+                            self._pda.set_state(S.EXPECT_VALUE_AFTER_COMMA)
                         elif ch in ARRAY_CLOSE:
                             await self._close_context(S.EXPECT_COMMA_OR_EOC)
                         else:
