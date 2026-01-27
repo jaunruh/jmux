@@ -47,6 +47,8 @@ from jmux.types import (
     BOOLEAN_OPEN,
     COLON,
     COMMA,
+    EXPECT_KEY_IN_ROOT,
+    EXPECT_VALUE_IN_ARRAY,
     FLOAT_ALLOWED,
     INTERGER_ALLOWED,
     JSON_FALSE,
@@ -495,13 +497,20 @@ class JMux(ABC):
             # CONTEXT: Root
             case M.ROOT:
                 match self._pda.state:
-                    case S.EXPECT_KEY:
+                    case _ if self._pda.state in EXPECT_KEY_IN_ROOT:
                         if ch in JSON_WHITESPACE:
                             pass
                         elif ch == '"':
                             self._pda.set_state(S.PARSING_KEY)
                             self._decoder.reset()
                         elif ch in OBJECT_CLOSE:
+                            if self._pda.state is S.EXPECT_KEY_AFTER_COMMA:
+                                raise UnexpectedCharacterError(
+                                    ch,
+                                    self._pda.stack,
+                                    self._pda.state,
+                                    "Trailing comma in object is not allowed.",
+                                )
                             await self._finalize()
                         else:
                             raise UnexpectedCharacterError(
@@ -509,27 +518,6 @@ class JMux(ABC):
                                 self._pda.stack,
                                 self._pda.state,
                                 "Char needs to be '\"', '}' or JSON whitespaces",
-                            )
-
-                    case S.EXPECT_KEY_AFTER_COMMA:
-                        if ch in JSON_WHITESPACE:
-                            pass
-                        elif ch == '"':
-                            self._pda.set_state(S.PARSING_KEY)
-                            self._decoder.reset()
-                        elif ch in OBJECT_CLOSE:
-                            raise UnexpectedCharacterError(
-                                ch,
-                                self._pda.stack,
-                                self._pda.state,
-                                "Trailing comma in object is not allowed.",
-                            )
-                        else:
-                            raise UnexpectedCharacterError(
-                                ch,
-                                self._pda.stack,
-                                self._pda.state,
-                                "Char needs to be '\"' or JSON whitespaces",
                             )
 
                     case S.PARSING_KEY:
@@ -667,12 +655,19 @@ class JMux(ABC):
                     )
 
                 match self._pda.state:
-                    case S.EXPECT_VALUE:
+                    case _ if self._pda.state in EXPECT_VALUE_IN_ARRAY:
                         if ch in JSON_WHITESPACE:
                             pass
                         elif await self._handle_common__expect_value(ch):
                             pass
                         elif ch in ARRAY_CLOSE:
+                            if self._pda.state is S.EXPECT_VALUE_AFTER_COMMA:
+                                raise UnexpectedCharacterError(
+                                    ch,
+                                    self._pda.stack,
+                                    self._pda.state,
+                                    "Trailing comma in array is not allowed.",
+                                )
                             await self._close_context(S.EXPECT_COMMA_OR_EOC)
                         else:
                             raise UnexpectedCharacterError(
@@ -680,26 +675,6 @@ class JMux(ABC):
                                 self._pda.stack,
                                 self._pda.state,
                                 "Expected value, ']' or white space",
-                            )
-
-                    case S.EXPECT_VALUE_AFTER_COMMA:
-                        if ch in JSON_WHITESPACE:
-                            pass
-                        elif await self._handle_common__expect_value(ch):
-                            pass
-                        elif ch in ARRAY_CLOSE:
-                            raise UnexpectedCharacterError(
-                                ch,
-                                self._pda.stack,
-                                self._pda.state,
-                                "Trailing comma in array is not allowed.",
-                            )
-                        else:
-                            raise UnexpectedCharacterError(
-                                ch,
-                                self._pda.stack,
-                                self._pda.state,
-                                "Expected value or white space",
                             )
 
                     case S.PARSING_STRING:
