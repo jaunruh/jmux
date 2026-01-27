@@ -33,17 +33,17 @@ class StringEscapeDecoder:
         self._buffer = ""
         self._string_escape = False
         self._is_parsing_unicode = False
-        self.unicode_buffer = ""
+        self._unicode_buffer = ""
 
     def push(self, ch: str) -> str | None:
         if self._is_parsing_unicode:
-            self.unicode_buffer += ch
-            if len(self.unicode_buffer) == 4:
-                code_point = int(self.unicode_buffer, 16)
+            self._unicode_buffer += ch
+            if len(self._unicode_buffer) == 4:
+                code_point = int(self._unicode_buffer, 16)
                 decoded_char = chr(code_point)
                 self._buffer += decoded_char
                 self._is_parsing_unicode = False
-                self.unicode_buffer = ""
+                self._unicode_buffer = ""
                 return decoded_char
             return None
 
@@ -51,7 +51,7 @@ class StringEscapeDecoder:
             self._string_escape = False
             if ch == "u":
                 self._is_parsing_unicode = True
-                self.unicode_buffer = ""
+                self._unicode_buffer = ""
                 return None
             escaped_char = self.escape_map.get(ch, ch)
             self._buffer += escaped_char
@@ -75,7 +75,7 @@ class StringEscapeDecoder:
         self._buffer = ""
         self._string_escape = False
         self._is_parsing_unicode = False
-        self.unicode_buffer = ""
+        self._unicode_buffer = ""
 
     @property
     def buffer(self) -> str:
