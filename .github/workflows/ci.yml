@@ -8,9 +8,6 @@ on:
       - "v*.*.*"
   pull_request: {}
 
-env:
-  UV_FROZEN: true
-
 jobs:
   check:
     runs-on: ubuntu-latest
