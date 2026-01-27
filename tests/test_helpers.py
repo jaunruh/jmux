@@ -9,7 +9,13 @@ from jmux.awaitable import (
     UnderlyingGenericMixin,
 )
 from jmux.demux import JMux
-from jmux.helpers import deconstruct_flat_type, extract_types_from_generic_alias
+from jmux.error import ParsePrimitiveError
+from jmux.helpers import (
+    deconstruct_flat_type,
+    extract_types_from_generic_alias,
+    get_main_type,
+    str_to_bool,
+)
 
 
 @pytest.mark.parametrize(
@@ -94,3 +100,127 @@ def test_extract_types_from_generic_alias(
     underlying_types = extract_types_from_generic_alias(TargetType)
 
     assert underlying_types == expected_tuple
+
+
+def test_str_to_bool__true():
+    assert str_to_bool("true") is True
+
+
+def test_str_to_bool__false():
+    assert str_to_bool("false") is False
+
+
+@pytest.mark.parametrize(
+    "invalid_input",
+    [
+        "True",
+        "False",
+        "TRUE",
+        "FALSE",
+        "1",
+        "0",
+        "yes",
+        "no",
+        "",
+        " ",
+        "  true",
+        "true  ",
+        " true ",
+        "tRue",
+        "fAlse",
+        "null",
+        "None",
+        "t",
+        "f",
+    ],
+)
+def test_str_to_bool__invalid_input_raises_parse_primitive_error(invalid_input: str):
+    with pytest.raises(ParsePrimitiveError):
+        str_to_bool(invalid_input)
+
+
+def test_get_main_type__single_type():
+    assert get_main_type({int}) is int
+    assert get_main_type({str}) is str
+    assert get_main_type({float}) is float
+    assert get_main_type({bool}) is bool
+    assert get_main_type({NoneType}) is NoneType
+    assert get_main_type({JMux}) is JMux
+
+
+def test_get_main_type__type_with_none():
+    assert get_main_type({int, NoneType}) is int
+    assert get_main_type({str, NoneType}) is str
+    assert get_main_type({float, NoneType}) is float
+    assert get_main_type({bool, NoneType}) is bool
+    assert get_main_type({JMux, NoneType}) is JMux
+
+
+def test_get_main_type__empty_set_raises_type_error():
+    with pytest.raises(TypeError):
+        get_main_type(set())
+
+
+def test_get_main_type__multiple_non_none_types_raises_type_error():
+    with pytest.raises(TypeError):
+        get_main_type({int, str})
+
+
+def test_get_main_type__multiple_types_with_none_raises_type_error():
+    with pytest.raises(TypeError):
+        get_main_type({int, str, NoneType})
+
+
+def test_get_main_type__does_not_modify_input():
+    input_set = {int, NoneType}
+    original_copy = input_set.copy()
+    get_main_type(input_set)
+    assert input_set == original_copy
+
+
+@pytest.mark.parametrize(
+    "input_type",
+    [
+        NestedObject,
+        AwaitableValue,
+        StreamableValues,
+    ],
+)
+def test_get_main_type__custom_types(input_type: Type):
+    assert get_main_type({input_type}) == input_type
+    assert get_main_type({input_type, NoneType}) == input_type
+
+
+def test_deconstruct_flat_type__raises_on_list():
+    with pytest.raises(TypeError):
+        deconstruct_flat_type(List[int])
+
+
+def test_deconstruct_flat_type__raises_on_generic_class():
+    with pytest.raises(TypeError):
+        deconstruct_flat_type(AwaitableValue[int])
+
+
+def test_deconstruct_flat_type__none_type_directly():
+    assert deconstruct_flat_type(None) == {NoneType}
+    assert deconstruct_flat_type(NoneType) == {NoneType}
+
+
+def test_extract_types_from_generic_alias__raises_on_dict():
+    with pytest.raises(TypeError):
+        extract_types_from_generic_alias(dict[str, int])
+
+
+def test_extract_types_from_generic_alias__raises_on_tuple():
+    with pytest.raises(TypeError):
+        extract_types_from_generic_alias(tuple[int, str])
+
+
+def test_extract_types_from_generic_alias__raises_on_multi_type_union_in_generic():
+    with pytest.raises(TypeError):
+        extract_types_from_generic_alias(AwaitableValue[int | str])
+
+
+def test_extract_types_from_generic_alias__raises_on_union_without_none_in_generic():
+    with pytest.raises(TypeError):
+        extract_types_from_generic_alias(AwaitableValue[int | float])

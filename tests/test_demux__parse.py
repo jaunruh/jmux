@@ -31,26 +31,26 @@ parse_correct_stream__params = [
     ('{"key_str": "val', [Mode.ROOT], State.PARSING_STRING),
     ('{"key_str": "val"', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
     ('{"key_str": "val" \t\n', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
-    ('{"key_str": "val",', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val",', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int', [Mode.ROOT], State.PARSING_KEY),
     ('{"key_str": "val","key_int"', [Mode.ROOT], State.EXPECT_COLON),
     ('{"key_str": "val","key_int":', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int": \t\n', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":4', [Mode.ROOT], State.PARSING_INTEGER),
     ('{"key_str": "val","key_int":42', [Mode.ROOT], State.PARSING_INTEGER),
-    ('{"key_str": "val","key_int":42,', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val","key_int":42,', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"', [Mode.ROOT], State.PARSING_KEY),
     ('{"key_str": "val","key_int":42,"key_float"', [Mode.ROOT], State.EXPECT_COLON),
     ('{"key_str": "val","key_int":42,"key_float":', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":3.14', [Mode.ROOT], State.PARSING_FLOAT),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":t', [Mode.ROOT], State.PARSING_BOOLEAN),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true', [Mode.ROOT], State.PARSING_BOOLEAN),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":n', [Mode.ROOT], State.PARSING_NULL),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', [Mode.ROOT], State.EXPECT_KEY),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream', [Mode.ROOT], State.PARSING_KEY),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream', [Mode.ROOT], State.PARSING_STRING),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum', [Mode.ROOT], State.PARSING_KEY),
@@ -62,25 +62,25 @@ parse_correct_stream__params = [
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str"', [Mode.ROOT, Mode.OBJECT], State.PARSING_OBJECT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"', [Mode.ROOT, Mode.OBJECT], State.PARSING_OBJECT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"}', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":', [Mode.ROOT], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":[', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["', [Mode.ROOT, Mode.ARRAY], State.PARSING_STRING),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1"', [Mode.ROOT, Mode.ARRAY], State.EXPECT_COMMA_OR_EOC),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1" \t\n', [Mode.ROOT, Mode.ARRAY], State.EXPECT_COMMA_OR_EOC),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1",', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1", \t\n', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2",', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1",', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1", \t\n', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2",', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3', [Mode.ROOT, Mode.ARRAY], State.PARSING_STRING),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"', [Mode.ROOT, Mode.ARRAY], State.EXPECT_COMMA_OR_EOC),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"]', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],', [Mode.ROOT], State.EXPECT_KEY),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],', [Mode.ROOT], State.EXPECT_KEY_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42', [Mode.ROOT, Mode.ARRAY], State.PARSING_INTEGER),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3', [Mode.ROOT, Mode.ARRAY], State.PARSING_FLOAT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14', [Mode.ROOT, Mode.ARRAY], State.PARSING_FLOAT),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4]', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true', [Mode.ROOT, Mode.ARRAY], State.PARSING_BOOLEAN),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false', [Mode.ROOT, Mode.ARRAY], State.PARSING_BOOLEAN),
@@ -95,7 +95,7 @@ parse_correct_stream__params = [
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{', [Mode.ROOT, Mode.ARRAY, Mode.OBJECT], State.PARSING_OBJECT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_s', [Mode.ROOT, Mode.ARRAY, Mode.OBJECT], State.PARSING_OBJECT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"}', [Mode.ROOT, Mode.ARRAY], State.EXPECT_COMMA_OR_EOC),
-    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE),
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},', [Mode.ROOT, Mode.ARRAY], State.EXPECT_VALUE_AFTER_COMMA),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},{"key_str":"nes', [Mode.ROOT, Mode.ARRAY, Mode.OBJECT], State.PARSING_OBJECT),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}', [Mode.ROOT, Mode.ARRAY], State.EXPECT_COMMA_OR_EOC),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":true,"key_none":null,"key_stream":"stream","key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1","val2","val3"],"arr_int":[42,43],"arr_float":[3.14,31.4],"arr_bool":[true,false,true],"arr_none":[null,null],"arr_enum":["value1","value2"],"arr_nested":[{"key_str":"nested1"},{"key_str":"nested2"}]', [Mode.ROOT], State.EXPECT_COMMA_OR_EOC),
@@ -160,6 +160,7 @@ parse_incorrect_stream__params = [
     ('{"key_str"', None),
     ('{"key_str": ""', None),
     ('{"key_str": "" ', None),
+    ('{"key_str": "val",}', UnexpectedCharacterError), # Trailing comma in object
     ('{"key_str": "val","key_int":4p', UnexpectedCharacterError),
     ('{"key_str": "val","key_int":4t', UnexpectedCharacterError),
     ('{"key_str": "val","key_int":420', None),
@@ -225,6 +226,7 @@ parse_incorrect_stream__params = [
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":p', UnexpectedCharacterError),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":[[', UnexpectedCharacterError),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":[]', None), # Allow empty arrays
+    ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1",]', UnexpectedCharacterError), # Trailing comma in array
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":[nu', UnexpectedCharacterError),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["', None),
     ('{"key_str": "val","key_int":42,"key_float":3.14,"key_bool":false,"key_none":null,"key_enum":"value1","key_nested":{"key_str":"nested"},"arr_str":["val1",}', UnexpectedCharacterError),
@@ -449,3 +451,979 @@ async def test_json_demux__parse_stream__double_nested(
     else:
         for ch in stream:
             await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__string_when_int_expected():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": "42"}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__int_when_string_expected():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": 42}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__array_when_object_expected():
+    class SObject(JMux):
+        class SNested(JMux):
+            key_str: AwaitableValue[str]
+
+        key_nested: AwaitableValue[SNested]
+
+    s_object = SObject()
+    stream = '{"key_nested": []}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__object_when_array_expected():
+    class SObject(JMux):
+        arr_str: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr_str": {}}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__boolean_when_number_expected():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": true}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__null_when_non_optional_expected():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": null}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__float_when_int_expected():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": 3.14}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__string_when_bool_expected():
+    class SObject(JMux):
+        key_bool: AwaitableValue[bool]
+
+    s_object = SObject()
+    stream = '{"key_bool": "true"}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__number_when_bool_expected():
+    class SObject(JMux):
+        key_bool: AwaitableValue[bool]
+
+    s_object = SObject()
+    stream = '{"key_bool": 1}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__string_in_int_array():
+    class SObject(JMux):
+        arr_int: StreamableValues[int]
+
+    s_object = SObject()
+    stream = '{"arr_int": [1, "2", 3]}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__int_in_string_array():
+    class SObject(JMux):
+        arr_str: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr_str": ["a", 2, "c"]}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__feed_char_with_multi_char_string_raises():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    with pytest.raises(UnexpectedCharacterError):
+        await s_object.feed_char("ab")
+
+
+@pytest.mark.anyio
+async def test_json_demux__feed_char_after_close_raises():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "val"}'
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    with pytest.raises(ObjectAlreadyClosedError):
+        await s_object.feed_char("{")
+
+
+@pytest.mark.anyio
+async def test_json_demux__feed_char_empty_string():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    with pytest.raises(UnexpectedCharacterError):
+        await s_object.feed_char("")
+
+
+@pytest.mark.anyio
+async def test_json_demux__trailing_comma_in_object():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "val",}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__trailing_comma_in_array():
+    class SObject(JMux):
+        arr_str: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr_str": ["a", "b",]}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__leading_zero_in_integer():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": 01}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__very_large_integer():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": 99999999999999999999999999999999}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__very_small_integer():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": -99999999999999999999999999999999}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__very_large_float():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 1.7976931348623157e+308}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__very_small_float():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 5e-324}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__negative_zero():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": -0}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__deeply_nested_objects():
+    class Level3(JMux):
+        value: AwaitableValue[str]
+
+    class Level2(JMux):
+        level3: AwaitableValue[Level3]
+
+    class Level1(JMux):
+        level2: AwaitableValue[Level2]
+
+    class SObject(JMux):
+        level1: AwaitableValue[Level1]
+
+    s_object = SObject()
+    stream = '{"level1": {"level2": {"level3": {"value": "deep"}}}}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__control_characters_in_string():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "hello\\nworld\\ttab"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__unicode_in_key():
+    class SObject(JMux):
+        日本語: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"日本語": "value"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__unicode_in_value():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "日本語"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__emoji_in_value():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "🎉🚀"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__empty_object():
+    class SObject(JMux):
+        pass
+
+    s_object = SObject()
+    stream = "{}"
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__empty_array():
+    class SObject(JMux):
+        arr_str: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr_str": []}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__whitespace_only_before_object():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '   \n\t  {"key_str": "val"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__whitespace_within_object():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{   "key_str"  :   "val"   }'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__nested_arrays_not_allowed():
+    class SObject(JMux):
+        arr: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr": [["a"]]}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__double_quote_escaped_in_string():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "hello \\"world\\""}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__backslash_escaped_in_string():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "C:\\\\Users\\\\Name"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__integer_zero():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": 0}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__float_zero():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 0.0}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__scientific_notation_negative_exponent():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 1.5e-10}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__scientific_notation_positive_exponent():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 1.5e+10}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__scientific_notation_capital_e():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 1.5E10}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__multiple_keys_same_type():
+    class SObject(JMux):
+        key1: AwaitableValue[str]
+        key2: AwaitableValue[str]
+        key3: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key1": "val1", "key2": "val2", "key3": "val3"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__mixed_types():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+        key_int: AwaitableValue[int]
+        key_float: AwaitableValue[float]
+        key_bool: AwaitableValue[bool]
+
+    s_object = SObject()
+    stream = '{"key_str": "val", "key_int": 42, "key_float": 3.14, "key_bool": true}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__feed_chunks_simple():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    await s_object.feed_chunks('{"key_str": "val"}')
+
+
+@pytest.mark.anyio
+async def test_json_demux__feed_chunks_multi_call():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    await s_object.feed_chunks('{"key_str": "val",')
+    await s_object.feed_chunks('"key_int": 42}')
+
+
+@pytest.mark.anyio
+async def test_json_demux__array_with_many_elements():
+    class SObject(JMux):
+        arr_int: StreamableValues[int]
+
+    s_object = SObject()
+    arr_content = ",".join(str(i) for i in range(100))
+    stream = f'{{"arr_int": [{arr_content}]}}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__long_string_value():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    long_value = "a" * 10000
+    stream = f'{{"key_str": "{long_value}"}}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__10_levels_deep():
+    class L10(JMux):
+        val: AwaitableValue[str]
+
+    class L9(JMux):
+        l10: AwaitableValue[L10]
+
+    class L8(JMux):
+        l9: AwaitableValue[L9]
+
+    class L7(JMux):
+        l8: AwaitableValue[L8]
+
+    class L6(JMux):
+        l7: AwaitableValue[L7]
+
+    class L5(JMux):
+        l6: AwaitableValue[L6]
+
+    class L4(JMux):
+        l5: AwaitableValue[L5]
+
+    class L3(JMux):
+        l4: AwaitableValue[L4]
+
+    class L2(JMux):
+        l3: AwaitableValue[L3]
+
+    class L1(JMux):
+        l2: AwaitableValue[L2]
+
+    class SObject(JMux):
+        l1: AwaitableValue[L1]
+
+    s_object = SObject()
+    stream = '{"l1":{"l2":{"l3":{"l4":{"l5":{"l6":{"l7":{"l8":{"l9":{"l10":{"val":"deep"}}}}}}}}}}}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__1000_char_string():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    long_value = "x" * 1000
+    stream = f'{{"key_str": "{long_value}"}}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__10000_char_string():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    long_value = "y" * 10000
+    stream = f'{{"key_str": "{long_value}"}}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__long_key_name():
+    long_key = "k" * 500
+
+    SObject = type(
+        "SObject", (JMux,), {"__annotations__": {long_key: AwaitableValue[str]}}
+    )
+
+    s_object = SObject()
+    stream = f'{{"{long_key}": "value"}}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__negative_with_exponent():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": -1.5e10}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__very_large_exponent():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 1e308}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__very_small_exponent():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 1e-308}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__leading_zero_float():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 0.123}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__trailing_zeros():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 1.10000}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__negative_zero_float():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": -0.0}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__integer_max_safe():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": 9007199254740991}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__integer_beyond_js_safe():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": 9007199254740992}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__very_long_integer():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": 123456789012345678901234567890}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__carriage_return():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{\r"key_str": "val"\r}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__mixed_whitespace():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{ \t\n\r "key_str" \t\n\r : \t\n\r "val" \t\n\r }'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__whitespace_before_array_close():
+    class SObject(JMux):
+        arr: StreamableValues[int]
+
+    s_object = SObject()
+    stream = '{"arr": [1, 2, 3   ]}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__whitespace_before_object_close():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "val"   }'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__newline_after_value_before_close():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "val"\n}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__array_with_whitespace_between_elements():
+    class SObject(JMux):
+        arr: StreamableValues[int]
+
+    s_object = SObject()
+    stream = '{"arr": [1 , 2 , 3]}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__single_element_array():
+    class SObject(JMux):
+        arr: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr": ["only"]}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__string_with_backslash_u():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "\\u0041"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__string_with_unicode_escape_chinese():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "\\u4e2d\\u6587"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__string_with_null_character():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "\\u0000"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__string_with_solidus():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "a\\/b"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__string_only_escapes():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "\\n\\t\\r\\b\\f"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__object_with_single_field():
+    class SObject(JMux):
+        key: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key": "value"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__object_key_with_spaces():
+    class SObject(JMux):
+        pass
+
+    SObject.__annotations__["key with spaces"] = AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key with spaces": "value"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__object_key_with_unicode():
+    class SObject(JMux):
+        キー: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"キー": "値"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__boolean_false_in_array():
+    class SObject(JMux):
+        arr: StreamableValues[bool]
+
+    s_object = SObject()
+    stream = '{"arr": [false]}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__all_null_array():
+    class SObject(JMux):
+        arr: StreamableValues[NoneType]
+
+    s_object = SObject()
+    stream = '{"arr": [null, null, null]}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_demux_parse__mixed_booleans():
+    class SObject(JMux):
+        arr: StreamableValues[bool]
+
+    s_object = SObject()
+    stream = '{"arr": [true, false, true, false]}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)

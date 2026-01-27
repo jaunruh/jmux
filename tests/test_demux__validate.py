@@ -5,7 +5,11 @@ from pydantic import BaseModel
 
 from jmux.awaitable import AwaitableValue, StreamableValues
 from jmux.demux import JMux
-from jmux.error import ObjectMissmatchedError
+from jmux.error import (
+    ForbiddenTypeHintsError,
+    MissingAttributeError,
+    ObjectMissmatchedError,
+)
 
 
 class SEnum(Enum):
@@ -131,4 +135,493 @@ async def test_json_demux__validate_pydantic(
         with pytest.raises(MaybeExpectedError):
             TargetJMux.assert_conforms_to(TargetPydantic)
     else:
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__missing_attribute_error():
+    class TargetJMux(JMux):
+        required_field: AwaitableValue[str]
+
+    class TargetPydantic(BaseModel):
+        pass
+
+    with pytest.raises(MissingAttributeError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__missing_attribute_error_with_optional_passes():
+    class TargetJMux(JMux):
+        optional_field: AwaitableValue[str | None]
+
+    class TargetPydantic(BaseModel):
+        pass
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__nested_mismatch():
+    class NestedJMux(JMux):
+        field: AwaitableValue[int]
+
+    class TargetJMux(JMux):
+        nested: AwaitableValue[NestedJMux]
+
+    class NestedPydantic(BaseModel):
+        field: str
+
+    class TargetPydantic(BaseModel):
+        nested: NestedPydantic
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__streamable_values_type_mismatch():
+    class TargetJMux(JMux):
+        arr: StreamableValues[int]
+
+    class TargetPydantic(BaseModel):
+        arr: list[str]
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__streamable_values_string_type():
+    class TargetJMux(JMux):
+        stream: StreamableValues[str]
+
+    class TargetPydantic(BaseModel):
+        stream: str
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__streamable_values_string_type_mismatch():
+    class TargetJMux(JMux):
+        stream: StreamableValues[str]
+
+    class TargetPydantic(BaseModel):
+        stream: int
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__enum_matching():
+    class TargetEnum(Enum):
+        A = "a"
+        B = "b"
+
+    class TargetJMux(JMux):
+        field: AwaitableValue[TargetEnum]
+
+    class TargetPydantic(BaseModel):
+        field: TargetEnum
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__enum_optional():
+    class TargetEnum(Enum):
+        A = "a"
+
+    class TargetJMux(JMux):
+        field: AwaitableValue[TargetEnum | None]
+
+    class TargetPydantic(BaseModel):
+        field: TargetEnum | None
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__streamable_enum_list():
+    class TargetEnum(Enum):
+        A = "a"
+        B = "b"
+
+    class TargetJMux(JMux):
+        arr: StreamableValues[TargetEnum]
+
+    class TargetPydantic(BaseModel):
+        arr: list[TargetEnum]
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__nested_streamable():
+    class NestedJMux(JMux):
+        val: AwaitableValue[str]
+
+    class TargetJMux(JMux):
+        arr: StreamableValues[NestedJMux]
+
+    class NestedPydantic(BaseModel):
+        val: str
+
+    class TargetPydantic(BaseModel):
+        arr: list[NestedPydantic]
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__pydantic_dict_type_forbidden():
+    class TargetJMux(JMux):
+        field: AwaitableValue[str]
+
+    class TargetPydantic(BaseModel):
+        field: dict[str, str]
+
+    with pytest.raises(ForbiddenTypeHintsError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__pydantic_tuple_type_forbidden():
+    class TargetJMux(JMux):
+        field: AwaitableValue[str]
+
+    class TargetPydantic(BaseModel):
+        field: tuple[str, int]
+
+    with pytest.raises(ForbiddenTypeHintsError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__pydantic_set_type_forbidden():
+    class TargetJMux(JMux):
+        field: AwaitableValue[str]
+
+    class TargetPydantic(BaseModel):
+        field: set[str]
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__multiple_fields_all_match():
+    class TargetJMux(JMux):
+        field1: AwaitableValue[str]
+        field2: AwaitableValue[int]
+        field3: AwaitableValue[bool]
+
+    class TargetPydantic(BaseModel):
+        field1: str
+        field2: int
+        field3: bool
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__multiple_fields_one_mismatch():
+    class TargetJMux(JMux):
+        field1: AwaitableValue[str]
+        field2: AwaitableValue[int]
+        field3: AwaitableValue[bool]
+
+    class TargetPydantic(BaseModel):
+        field1: str
+        field2: str
+        field3: bool
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__extra_pydantic_field_allowed():
+    class TargetJMux(JMux):
+        field1: AwaitableValue[str]
+
+    class TargetPydantic(BaseModel):
+        field1: str
+        field2: int
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__deep_nested_objects():
+    class Level3JMux(JMux):
+        val: AwaitableValue[str]
+
+    class Level2JMux(JMux):
+        level3: AwaitableValue[Level3JMux]
+
+    class Level1JMux(JMux):
+        level2: AwaitableValue[Level2JMux]
+
+    class TargetJMux(JMux):
+        level1: AwaitableValue[Level1JMux]
+
+    class Level3Pydantic(BaseModel):
+        val: str
+
+    class Level2Pydantic(BaseModel):
+        level3: Level3Pydantic
+
+    class Level1Pydantic(BaseModel):
+        level2: Level2Pydantic
+
+    class TargetPydantic(BaseModel):
+        level1: Level1Pydantic
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__deep_nested_mismatch_at_bottom():
+    class Level2JMux(JMux):
+        val: AwaitableValue[int]
+
+    class Level1JMux(JMux):
+        level2: AwaitableValue[Level2JMux]
+
+    class TargetJMux(JMux):
+        level1: AwaitableValue[Level1JMux]
+
+    class Level2Pydantic(BaseModel):
+        val: str
+
+    class Level1Pydantic(BaseModel):
+        level2: Level2Pydantic
+
+    class TargetPydantic(BaseModel):
+        level1: Level1Pydantic
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__mixed_streamable_and_awaitable():
+    class TargetJMux(JMux):
+        single_val: AwaitableValue[str]
+        list_val: StreamableValues[int]
+        stream_str: StreamableValues[str]
+
+    class TargetPydantic(BaseModel):
+        single_val: str
+        list_val: list[int]
+        stream_str: str
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__optional_list_in_pydantic():
+    class TargetJMux(JMux):
+        arr: StreamableValues[str]
+
+    class TargetPydantic(BaseModel):
+        arr: list[str] | None
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__all_primitive_types():
+    class TargetJMux(JMux):
+        str_val: AwaitableValue[str]
+        int_val: AwaitableValue[int]
+        float_val: AwaitableValue[float]
+        bool_val: AwaitableValue[bool]
+        none_val: AwaitableValue[None]
+
+    class TargetPydantic(BaseModel):
+        str_val: str
+        int_val: int
+        float_val: float
+        bool_val: bool
+        none_val: None
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_assert_conforms_to__all_optional_primitives():
+    class TargetJMux(JMux):
+        str_val: AwaitableValue[str | None]
+        int_val: AwaitableValue[int | None]
+        float_val: AwaitableValue[float | None]
+        bool_val: AwaitableValue[bool | None]
+
+    class TargetPydantic(BaseModel):
+        str_val: str | None
+        int_val: int | None
+        float_val: float | None
+        bool_val: bool | None
+
+    TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__awaitable_int_vs_pydantic_str():
+    class TargetJMux(JMux):
+        field: AwaitableValue[int]
+
+    class TargetPydantic(BaseModel):
+        field: str
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__awaitable_str_vs_pydantic_int():
+    class TargetJMux(JMux):
+        field: AwaitableValue[str]
+
+    class TargetPydantic(BaseModel):
+        field: int
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__awaitable_bool_vs_pydantic_str():
+    class TargetJMux(JMux):
+        field: AwaitableValue[bool]
+
+    class TargetPydantic(BaseModel):
+        field: str
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__awaitable_float_vs_pydantic_int():
+    class TargetJMux(JMux):
+        field: AwaitableValue[float]
+
+    class TargetPydantic(BaseModel):
+        field: int
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__multiple_extra_non_optional_fields():
+    class TargetJMux(JMux):
+        field1: AwaitableValue[str]
+        field2: AwaitableValue[int]
+        field3: AwaitableValue[bool]
+
+    class TargetPydantic(BaseModel):
+        pass
+
+    with pytest.raises(MissingAttributeError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__streamable_str_vs_list_int():
+    class TargetJMux(JMux):
+        arr: StreamableValues[str]
+
+    class TargetPydantic(BaseModel):
+        arr: list[int]
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__streamable_bool_vs_list_str():
+    class TargetJMux(JMux):
+        arr: StreamableValues[bool]
+
+    class TargetPydantic(BaseModel):
+        arr: list[str]
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__streamable_float_vs_list_int():
+    class TargetJMux(JMux):
+        arr: StreamableValues[float]
+
+    class TargetPydantic(BaseModel):
+        arr: list[int]
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__mismatched_enum_fails():
+    class Enum1(Enum):
+        A = "a"
+
+    class Enum2(Enum):
+        B = "b"
+
+    class TargetJMux(JMux):
+        field: AwaitableValue[Enum1]
+
+    class TargetPydantic(BaseModel):
+        field: Enum2
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__enum_vs_str_fails():
+    class TargetEnum(Enum):
+        A = "a"
+
+    class TargetJMux(JMux):
+        field: AwaitableValue[TargetEnum]
+
+    class TargetPydantic(BaseModel):
+        field: str
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__str_vs_enum_fails():
+    class TargetEnum(Enum):
+        A = "a"
+
+    class TargetJMux(JMux):
+        field: AwaitableValue[str]
+
+    class TargetPydantic(BaseModel):
+        field: TargetEnum
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__array_of_enum_mismatched():
+    class Enum1(Enum):
+        A = "a"
+
+    class Enum2(Enum):
+        B = "b"
+
+    class TargetJMux(JMux):
+        arr: StreamableValues[Enum1]
+
+    class TargetPydantic(BaseModel):
+        arr: list[Enum2]
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__nested_array_of_objects_mismatch():
+    class NestedJMux(JMux):
+        val: AwaitableValue[int]
+
+    class TargetJMux(JMux):
+        arr: StreamableValues[NestedJMux]
+
+    class NestedPydantic(BaseModel):
+        val: str
+
+    class TargetPydantic(BaseModel):
+        arr: list[NestedPydantic]
+
+    with pytest.raises(ObjectMissmatchedError):
+        TargetJMux.assert_conforms_to(TargetPydantic)
+
+
+def test_validation__streamable_int_vs_pydantic_str_fails():
+    class TargetJMux(JMux):
+        stream: StreamableValues[int]
+
+    class TargetPydantic(BaseModel):
+        stream: str
+
+    with pytest.raises(ObjectMissmatchedError):
         TargetJMux.assert_conforms_to(TargetPydantic)
