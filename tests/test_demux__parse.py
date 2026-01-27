@@ -449,3 +449,570 @@ async def test_json_demux__parse_stream__double_nested(
     else:
         for ch in stream:
             await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__string_when_int_expected():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": "42"}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__int_when_string_expected():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": 42}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__array_when_object_expected():
+    class SObject(JMux):
+        class SNested(JMux):
+            key_str: AwaitableValue[str]
+
+        key_nested: AwaitableValue[SNested]
+
+    s_object = SObject()
+    stream = '{"key_nested": []}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__object_when_array_expected():
+    class SObject(JMux):
+        arr_str: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr_str": {}}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__boolean_when_number_expected():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": true}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__null_when_non_optional_expected():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": null}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__float_when_int_expected():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": 3.14}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__string_when_bool_expected():
+    class SObject(JMux):
+        key_bool: AwaitableValue[bool]
+
+    s_object = SObject()
+    stream = '{"key_bool": "true"}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__number_when_bool_expected():
+    class SObject(JMux):
+        key_bool: AwaitableValue[bool]
+
+    s_object = SObject()
+    stream = '{"key_bool": 1}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__string_in_int_array():
+    class SObject(JMux):
+        arr_int: StreamableValues[int]
+
+    s_object = SObject()
+    stream = '{"arr_int": [1, "2", 3]}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__type_mismatch__int_in_string_array():
+    class SObject(JMux):
+        arr_str: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr_str": ["a", 2, "c"]}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__feed_char_with_multi_char_string_raises():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    with pytest.raises(UnexpectedCharacterError):
+        await s_object.feed_char("ab")
+
+
+@pytest.mark.anyio
+async def test_json_demux__feed_char_after_close_raises():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "val"}'
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+    with pytest.raises(ObjectAlreadyClosedError):
+        await s_object.feed_char("{")
+
+
+@pytest.mark.anyio
+async def test_json_demux__feed_char_empty_string():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    with pytest.raises(UnexpectedCharacterError):
+        await s_object.feed_char("")
+
+
+@pytest.mark.anyio
+async def test_json_demux__trailing_comma_in_object():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "val",}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__trailing_comma_in_array():
+    class SObject(JMux):
+        arr_str: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr_str": ["a", "b",]}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__leading_zero_in_integer():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": 01}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__very_large_integer():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": 99999999999999999999999999999999}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__very_small_integer():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": -99999999999999999999999999999999}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__very_large_float():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 1.7976931348623157e+308}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__very_small_float():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 5e-324}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__negative_zero():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": -0}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__deeply_nested_objects():
+    class Level3(JMux):
+        value: AwaitableValue[str]
+
+    class Level2(JMux):
+        level3: AwaitableValue[Level3]
+
+    class Level1(JMux):
+        level2: AwaitableValue[Level2]
+
+    class SObject(JMux):
+        level1: AwaitableValue[Level1]
+
+    s_object = SObject()
+    stream = '{"level1": {"level2": {"level3": {"value": "deep"}}}}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__control_characters_in_string():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "hello\\nworld\\ttab"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__unicode_in_key():
+    class SObject(JMux):
+        日本語: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"日本語": "value"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__unicode_in_value():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "日本語"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__emoji_in_value():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "🎉🚀"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__empty_object():
+    class SObject(JMux):
+        pass
+
+    s_object = SObject()
+    stream = "{}"
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__empty_array():
+    class SObject(JMux):
+        arr_str: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr_str": []}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__whitespace_only_before_object():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '   \n\t  {"key_str": "val"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__whitespace_within_object():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{   "key_str"  :   "val"   }'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__nested_arrays_not_allowed():
+    class SObject(JMux):
+        arr: StreamableValues[str]
+
+    s_object = SObject()
+    stream = '{"arr": [["a"]]}'
+
+    with pytest.raises(UnexpectedCharacterError):
+        for ch in stream:
+            await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__double_quote_escaped_in_string():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "hello \\"world\\""}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__backslash_escaped_in_string():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key_str": "C:\\\\Users\\\\Name"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__integer_zero():
+    class SObject(JMux):
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    stream = '{"key_int": 0}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__float_zero():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 0.0}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__scientific_notation_negative_exponent():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 1.5e-10}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__scientific_notation_positive_exponent():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 1.5e+10}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__scientific_notation_capital_e():
+    class SObject(JMux):
+        key_float: AwaitableValue[float]
+
+    s_object = SObject()
+    stream = '{"key_float": 1.5E10}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__multiple_keys_same_type():
+    class SObject(JMux):
+        key1: AwaitableValue[str]
+        key2: AwaitableValue[str]
+        key3: AwaitableValue[str]
+
+    s_object = SObject()
+    stream = '{"key1": "val1", "key2": "val2", "key3": "val3"}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__mixed_types():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+        key_int: AwaitableValue[int]
+        key_float: AwaitableValue[float]
+        key_bool: AwaitableValue[bool]
+
+    s_object = SObject()
+    stream = '{"key_str": "val", "key_int": 42, "key_float": 3.14, "key_bool": true}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__feed_chunks_simple():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    await s_object.feed_chunks('{"key_str": "val"}')
+
+
+@pytest.mark.anyio
+async def test_json_demux__feed_chunks_multi_call():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+        key_int: AwaitableValue[int]
+
+    s_object = SObject()
+    await s_object.feed_chunks('{"key_str": "val",')
+    await s_object.feed_chunks('"key_int": 42}')
+
+
+@pytest.mark.anyio
+async def test_json_demux__array_with_many_elements():
+    class SObject(JMux):
+        arr_int: StreamableValues[int]
+
+    s_object = SObject()
+    arr_content = ",".join(str(i) for i in range(100))
+    stream = f'{{"arr_int": [{arr_content}]}}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
+
+
+@pytest.mark.anyio
+async def test_json_demux__long_string_value():
+    class SObject(JMux):
+        key_str: AwaitableValue[str]
+
+    s_object = SObject()
+    long_value = "a" * 10000
+    stream = f'{{"key_str": "{long_value}"}}'
+
+    for ch in stream:
+        await s_object.feed_char(ch)
