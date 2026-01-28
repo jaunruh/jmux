@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from asyncio import Event, Queue
+import math
 from enum import Enum
 from types import NoneType
 from typing import (
@@ -13,6 +13,9 @@ from typing import (
     cast,
     runtime_checkable,
 )
+
+from anyio import Event, create_memory_object_stream
+from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
 from jmux.error import NothingEmittedError, SinkClosedError
 from jmux.helpers import extract_types_from_generic_alias
@@ -27,7 +30,7 @@ class SinkType(Enum):
 
 class UnderlyingGenericMixin(Generic[T]):
     """
-    A mixin class that provides methods for inspecting the generic types of a 
+    A mixin class that provides methods for inspecting the generic types of a
     class at runtime.
     """
 
@@ -109,8 +112,13 @@ class StreamableValues(UnderlyingGenericMixin[T], Generic[T]):
     stream and closing it when no more items will be added.
     """
 
+    _send_stream: MemoryObjectSendStream[T | None]
+    _receive_stream: MemoryObjectReceiveStream[T | None]
+
     def __init__(self):
-        self._queue = Queue[T | None]()
+        self._send_stream, self._receive_stream = create_memory_object_stream[T | None](
+            max_buffer_size=math.inf
+        )
         self._last_item: T | None = None
         self._closed = False
 
@@ -142,7 +150,7 @@ class StreamableValues(UnderlyingGenericMixin[T], Generic[T]):
         if self._closed:
             raise ValueError("Cannot put item into a closed sink.")
         self._last_item = item
-        await self._queue.put(item)
+        await self._send_stream.send(item)
 
     async def close(self):
         """
@@ -154,10 +162,10 @@ class StreamableValues(UnderlyingGenericMixin[T], Generic[T]):
         if self._closed:
             raise SinkClosedError(
                 f"SinkType {self.get_sink_type()}[{self.get_underlying_main_generic()}]"
-                  + " is already closed."
+                + " is already closed."
             )
         self._closed = True
-        await self._queue.put(None)
+        await self._send_stream.send(None)
 
     async def ensure_closed(self):
         """
@@ -196,7 +204,7 @@ class StreamableValues(UnderlyingGenericMixin[T], Generic[T]):
 
     async def _stream(self) -> AsyncGenerator[T, None]:
         while True:
-            item = await self._queue.get()
+            item = await self._receive_stream.receive()
             if item is None and self._closed:
                 break
             if item is None:
@@ -242,7 +250,7 @@ class AwaitableValue(UnderlyingGenericMixin[T], Generic[T]):
         if self._is_closed:
             raise SinkClosedError(
                 f"SinkType {self.get_sink_type()}"
-                +"[{self.get_underlying_main_generic().__name__}] is already closed."
+                + "[{self.get_underlying_main_generic().__name__}] is already closed."
             )
         elif not self._event.is_set() and NoneType in self.get_underlying_generics():
             self._event.set()

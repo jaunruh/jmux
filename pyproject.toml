@@ -24,11 +24,12 @@ Homepage = "https://github.com/jaunruh/jmux"
 Repository = "https://github.com/jaunruh/jmux"
 
 [project.optional-dependencies]
-test = ["pytest", "pytest-anyio"]
+test = ["pytest", "pytest-anyio", "trio"]
 dev = [
   "ruff",
   "pytest",
   "pytest-anyio",
+  "trio",
   "uv",
   "build",
   "twine",
