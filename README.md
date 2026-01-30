@@ -8,7 +8,8 @@ This package is inspired by `Snapshot Streaming` mentioned in the [`WWDC25: Meet
 
 ## Features
 
-- **Asynchronous by Design**: Built on top of `asyncio`, JMux is perfect for modern, high-performance Python applications.
+- **Asynchronous by Design**: Built on top of `anyio`, JMux supports both `asyncio` and `trio` backends, making it perfect for modern, high-performance Python applications.
+- **Python 3.10+**: Supports Python 3.10 and newer versions.
 - **Pydantic Integration**: Validate your `JMux` classes against Pydantic models to ensure type safety and consistency.
 - **Awaitable and Streamable Sinks**: Use `AwaitableValue` for single values and `StreamableValues` for streams of values.
 - **Robust Error Handling**: JMux provides a comprehensive set of exceptions to handle parsing errors and other issues.
@@ -29,7 +30,7 @@ The primary use case for `jmux` is to process streaming JSON responses from LLMs
 Here’s a conceptual example of how you might integrate `jmux` with an LLM call, such as one made with `litellm`:
 
 ```python
-import asyncio
+import anyio
 from pydantic import BaseModel
 from jmux import JMux, AwaitableValue, StreamableValues
 # litellm is used conceptually here
@@ -53,7 +54,7 @@ async def mock_llm_stream():
     json_stream = '{"thought": "I need to write some code.", "tool_code": "print(\'Hello, World!\')"}'
     for char in json_stream:
         yield char
-        await asyncio.sleep(0.01) # Simulate network latency
+        await anyio.sleep(0.01) # Simulate network latency
 
 # Main function to orchestrate the call and processing
 async def process_llm_response():
@@ -79,15 +80,16 @@ async def process_llm_response():
             print(f"  -> Received fragment: {code_fragment}")
         print(f"Full tool code received: {full_code}")
 
-    # Run all tasks concurrently
-    await asyncio.gather(
-        feed_stream(),
-        consume_thought(),
-        consume_tool_code()
-    )
+    # Run all tasks concurrently using anyio task group
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(feed_stream)
+        tg.start_soon(consume_thought)
+        tg.start_soon(consume_tool_code)
 
+# Run with asyncio backend
 if __name__ == "__main__":
-    asyncio.run(process_llm_response())
+    anyio.run(process_llm_response, backend="asyncio")
+    # Or use trio: anyio.run(process_llm_response, backend="trio")
 ```
 
 ## Example Implementation
@@ -159,7 +161,7 @@ You can either `await awaitable_llm_result` if you need the full result, or use 
 Here is a simple example of how to use JMux to parse a JSON stream:
 
 ```python
-import asyncio
+import anyio
 from enum import Enum
 from types import NoneType
 from pydantic import BaseModel
@@ -244,10 +246,13 @@ async def main():
         nested_key_str = await key_nested.key_str
         print(f"nested_key_str: {nested_key_str}")
 
-    await asyncio.gather(produce(), consume())
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(produce)
+        tg.start_soon(consume)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    anyio.run(main, backend="asyncio")
+    # Or use trio: anyio.run(main, backend="trio")
 ```
 
 ## API Reference
@@ -299,10 +304,6 @@ This allows you to fully stream strings directly to a sink.
 ## License
 
 This project is licensed under the terms of the MIT license. See the [LICENSE](LICENSE) file for details.
-
-## Planned Improvements
-
-- Add support for older Python versions
 
 ## Contributions
 
