@@ -1,10 +1,15 @@
 from enum import Enum
+from textwrap import dedent
 from typing import Annotated
 
 import pytest
 
 from jmux.base import StreamableBaseModel, Streamed
 from jmux.generator import generate_jmux_code, get_jmux_type
+
+
+def expect_multiline(text: str) -> str:
+    return dedent(text).strip() + "\n"
 
 
 class Status(Enum):
@@ -79,63 +84,120 @@ def test_get_jmux_type_list_nested_model():
 
 def test_generate_jmux_code_simple_model():
     code = generate_jmux_code([SimpleModel])
-    assert "class SimpleModelJMux(JMux):" in code
-    assert "name: AwaitableValue[str]" in code
-    assert "age: AwaitableValue[int]" in code
-    assert "score: AwaitableValue[float]" in code
-    assert "active: AwaitableValue[bool]" in code
+    assert code == expect_multiline("""
+        from enum import Enum
+        from typing import Union
+
+        from jmux.awaitable import AwaitableValue, StreamableValues
+        from jmux.demux import JMux
+
+        class SimpleModelJMux(JMux):
+            name: AwaitableValue[str]
+            age: AwaitableValue[int]
+            score: AwaitableValue[float]
+            active: AwaitableValue[bool]
+    """)
 
 
 def test_generate_jmux_code_streamed_string():
     code = generate_jmux_code([StreamedStringModel])
-    assert "class StreamedStringModelJMux(JMux):" in code
-    assert "content: StreamableValues[str]" in code
+    assert code == expect_multiline("""
+        from enum import Enum
+        from typing import Union
+
+        from jmux.awaitable import AwaitableValue, StreamableValues
+        from jmux.demux import JMux
+
+        class StreamedStringModelJMux(JMux):
+            content: StreamableValues[str]
+    """)
 
 
 def test_generate_jmux_code_list_model():
     code = generate_jmux_code([ListModel])
-    assert "class ListModelJMux(JMux):" in code
-    assert "items: StreamableValues[str]" in code
-    assert "numbers: StreamableValues[int]" in code
+    assert code == expect_multiline("""
+        from enum import Enum
+        from typing import Union
+
+        from jmux.awaitable import AwaitableValue, StreamableValues
+        from jmux.demux import JMux
+
+        class ListModelJMux(JMux):
+            items: StreamableValues[str]
+            numbers: StreamableValues[int]
+    """)
 
 
 def test_generate_jmux_code_enum_model():
     code = generate_jmux_code([EnumModel])
-    assert "class EnumModelJMux(JMux):" in code
-    assert "status: AwaitableValue[Status]" in code
-    assert "import Status" in code
+    assert code == expect_multiline("""
+        from enum import Enum
+        from typing import Union
+
+        from jmux.awaitable import AwaitableValue, StreamableValues
+        from jmux.demux import JMux
+
+        from test_generator import Status
+
+        class EnumModelJMux(JMux):
+            status: AwaitableValue[Status]
+    """)
 
 
 def test_generate_jmux_code_optional_model():
     code = generate_jmux_code([OptionalModel])
-    assert "class OptionalModelJMux(JMux):" in code
-    assert "maybe_name: AwaitableValue[str | None]" in code
+    assert code == expect_multiline("""
+        from enum import Enum
+        from typing import Union
+
+        from jmux.awaitable import AwaitableValue, StreamableValues
+        from jmux.demux import JMux
+
+        class OptionalModelJMux(JMux):
+            maybe_name: AwaitableValue[str | None]
+    """)
 
 
 def test_generate_jmux_code_nested_model():
     code = generate_jmux_code([NestedOuterModel, NestedInnerModel])
-    assert "class NestedInnerModelJMux(JMux):" in code
-    assert "class NestedOuterModelJMux(JMux):" in code
-    assert "inner: AwaitableValue[NestedInnerModelJMux]" in code
-    inner_index = code.index("class NestedInnerModelJMux")
-    outer_index = code.index("class NestedOuterModelJMux")
-    assert inner_index < outer_index
+    assert code == expect_multiline("""
+        from enum import Enum
+        from typing import Union
+
+        from jmux.awaitable import AwaitableValue, StreamableValues
+        from jmux.demux import JMux
+
+        class NestedInnerModelJMux(JMux):
+            value: AwaitableValue[str]
+
+        class NestedOuterModelJMux(JMux):
+            inner: AwaitableValue[NestedInnerModelJMux]
+    """)
 
 
 def test_generate_jmux_code_list_nested_model():
     code = generate_jmux_code([ListNestedModel, NestedInnerModel])
-    assert "class ListNestedModelJMux(JMux):" in code
-    assert "items: StreamableValues[NestedInnerModelJMux]" in code
+    assert code == expect_multiline("""
+        from enum import Enum
+        from typing import Union
 
+        from jmux.awaitable import AwaitableValue, StreamableValues
+        from jmux.demux import JMux
 
-def test_generate_jmux_code_imports():
-    code = generate_jmux_code([SimpleModel])
-    assert "from jmux.awaitable import AwaitableValue, StreamableValues" in code
-    assert "from jmux.demux import JMux" in code
+        class NestedInnerModelJMux(JMux):
+            value: AwaitableValue[str]
+
+        class ListNestedModelJMux(JMux):
+            items: StreamableValues[NestedInnerModelJMux]
+    """)
 
 
 def test_generate_jmux_code_empty_list():
     code = generate_jmux_code([])
-    assert "from jmux.awaitable import AwaitableValue, StreamableValues" in code
-    assert "from jmux.demux import JMux" in code
-    assert "class" not in code.split("JMux")[-1]
+    assert code == expect_multiline("""
+        from enum import Enum
+        from typing import Union
+
+        from jmux.awaitable import AwaitableValue, StreamableValues
+        from jmux.demux import JMux
+    """)
