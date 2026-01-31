@@ -108,8 +108,8 @@ class IAsyncSink(Protocol[T]):
 class StreamableValues(UnderlyingGenericMixin[T], Generic[T]):
     """
     A class that represents a stream of values that can be asynchronously iterated over.
-    It uses an asyncio.Queue to store the items and allows for putting items into the
-    stream and closing it when no more items will be added.
+    It uses anyio memory object streams to store the items and allows for putting items
+    into the stream and closing it when no more items will be added.
     """
 
     _send_stream: MemoryObjectSendStream[T | None]
@@ -166,6 +166,7 @@ class StreamableValues(UnderlyingGenericMixin[T], Generic[T]):
             )
         self._closed = True
         await self._send_stream.send(None)
+        await self._send_stream.aclose()
 
     async def ensure_closed(self):
         """
@@ -203,13 +204,16 @@ class StreamableValues(UnderlyingGenericMixin[T], Generic[T]):
         return self._stream()
 
     async def _stream(self) -> AsyncGenerator[T, None]:
-        while True:
-            item = await self._receive_stream.receive()
-            if item is None and self._closed:
-                break
-            if item is None:
-                raise ValueError("Received None item, but the sink is not closed.")
-            yield item
+        try:
+            while True:
+                item = await self._receive_stream.receive()
+                if item is None and self._closed:
+                    break
+                if item is None:
+                    raise ValueError("Received None item, but the sink is not closed.")
+                yield item
+        finally:
+            await self._receive_stream.aclose()
 
 
 class AwaitableValue(UnderlyingGenericMixin[T], Generic[T]):
