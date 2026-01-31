@@ -5,12 +5,26 @@ import importlib.util
 import sys
 from enum import Enum
 from pathlib import Path
-from types import NoneType
-from typing import Annotated, Any, get_args, get_origin
+from types import ModuleType, NoneType
+from typing import Annotated, Any, get_args, get_origin, get_type_hints
 
 from pydantic import BaseModel
 
 from jmux.base import StreamableBaseModel, Streamed
+
+
+def extract_models_from_source(
+    source: str,
+    module_name: str = "__jmux_extract__",
+) -> list[type[StreamableBaseModel]]:
+    if not _source_imports_streamable_base_model(source):
+        return []
+
+    module = _exec_source_as_module(source, module_name)
+    if module is None:
+        return []
+
+    return _extract_models_from_module(module)
 
 
 def find_streamable_models(root_path: Path) -> list[type[StreamableBaseModel]]:
@@ -18,30 +32,48 @@ def find_streamable_models(root_path: Path) -> list[type[StreamableBaseModel]]:
     root_path = root_path.resolve()
 
     for py_file in root_path.rglob("*.py"):
-        if not _file_imports_streamable_base_model(py_file):
+        source = _read_file_safe(py_file)
+        if source is None:
+            continue
+
+        if not _source_imports_streamable_base_model(source):
             continue
 
         module = _import_module_from_path(py_file, root_path)
         if module is None:
             continue
 
-        for name in dir(module):
-            obj = getattr(module, name)
-            if (
-                isinstance(obj, type)
-                and issubclass(obj, StreamableBaseModel)
-                and obj is not StreamableBaseModel
-            ):
-                models.append(obj)
+        models.extend(_extract_models_from_module(module))
 
     return models
 
 
-def _file_imports_streamable_base_model(py_file: Path) -> bool:
+def _extract_models_from_module(
+    module: ModuleType,
+) -> list[type[StreamableBaseModel]]:
+    models: list[type[StreamableBaseModel]] = []
+    for name in dir(module):
+        obj = getattr(module, name)
+        if (
+            isinstance(obj, type)
+            and issubclass(obj, StreamableBaseModel)
+            and obj is not StreamableBaseModel
+        ):
+            models.append(obj)
+    return models
+
+
+def _read_file_safe(py_file: Path) -> str | None:
     try:
-        source = py_file.read_text()
+        return py_file.read_text()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _source_imports_streamable_base_model(source: str) -> bool:
+    try:
         tree = ast.parse(source)
-    except (SyntaxError, UnicodeDecodeError):
+    except SyntaxError:
         return False
 
     for node in ast.walk(tree):
@@ -57,7 +89,20 @@ def _file_imports_streamable_base_model(py_file: Path) -> bool:
     return False
 
 
-def _import_module_from_path(py_file: Path, root_path: Path) -> Any:
+def _exec_source_as_module(source: str, module_name: str) -> ModuleType | None:
+    try:
+        module = ModuleType(module_name)
+        module.__dict__["__builtins__"] = __builtins__
+        sys.modules[module_name] = module
+        exec(compile(source, f"<{module_name}>", "exec"), module.__dict__)
+        return module
+    except Exception:
+        if module_name in sys.modules:
+            del sys.modules[module_name]
+        return None
+
+
+def _import_module_from_path(py_file: Path, root_path: Path) -> ModuleType | None:
     try:
         relative = py_file.relative_to(root_path)
         module_name = str(relative.with_suffix("")).replace("/", ".").replace("\\", ".")
@@ -75,6 +120,22 @@ def _import_module_from_path(py_file: Path, root_path: Path) -> Any:
         return module
     except Exception:
         return None
+
+
+def _is_streamed_marker(obj: Any) -> bool:
+    if obj is Streamed:
+        return True
+    if isinstance(obj, type) and obj.__name__ == "Streamed":
+        return True
+    return False
+
+
+def _get_resolved_annotations(model: type[StreamableBaseModel]) -> dict[str, Any]:
+    try:
+        globalns = getattr(sys.modules.get(model.__module__, None), "__dict__", {})
+        return get_type_hints(model, globalns=globalns, include_extras=True)
+    except Exception:
+        return model.__annotations__
 
 
 def generate_jmux_code(models: list[type[StreamableBaseModel]]) -> str:
@@ -106,8 +167,9 @@ def generate_jmux_code(models: list[type[StreamableBaseModel]]) -> str:
 def _collect_enum_imports(models: list[type[StreamableBaseModel]]) -> list[str]:
     enums: set[type[Enum]] = set()
     for model in models:
-        for field_name, field_info in model.model_fields.items():
-            annotation = model.__annotations__.get(field_name)
+        resolved = _get_resolved_annotations(model)
+        for field_name in model.model_fields:
+            annotation = resolved.get(field_name)
             if annotation is None:
                 continue
             _collect_enums_from_type(annotation, enums)
@@ -142,8 +204,9 @@ def _collect_nested_models(
 ) -> set[type[StreamableBaseModel]]:
     nested: set[type[StreamableBaseModel]] = set()
     for model in models:
-        for field_name, field_info in model.model_fields.items():
-            annotation = model.__annotations__.get(field_name)
+        resolved = _get_resolved_annotations(model)
+        for field_name in model.model_fields:
+            annotation = resolved.get(field_name)
             if annotation is None:
                 continue
             _collect_nested_from_type(annotation, nested)
@@ -186,8 +249,9 @@ def _topological_sort(
         if model in visited:
             return
         visited.add(model)
+        resolved = _get_resolved_annotations(model)
         for field_name in model.model_fields:
-            annotation = model.__annotations__.get(field_name)
+            annotation = resolved.get(field_name)
             if annotation is None:
                 continue
             dep = _get_nested_model_dependency(annotation)
@@ -228,9 +292,10 @@ def _generate_class(model: type[StreamableBaseModel]) -> list[str]:
     class_name = f"{model.__name__}JMux"
     lines = [f"class {class_name}(JMux):"]
 
+    resolved = _get_resolved_annotations(model)
     has_fields = False
-    for field_name, field_info in model.model_fields.items():
-        annotation = model.__annotations__.get(field_name)
+    for field_name in model.model_fields:
+        annotation = resolved.get(field_name)
         if annotation is None:
             continue
         jmux_type = get_jmux_type(annotation)
@@ -250,9 +315,7 @@ def get_jmux_type(annotation: Any) -> str:
     if origin is Annotated:
         inner_type = args[0] if args else None
         metadata = args[1:] if len(args) > 1 else ()
-        has_streamed = any(
-            isinstance(m, type) and m is Streamed for m in metadata
-        ) or any(m is Streamed for m in metadata)
+        has_streamed = any(_is_streamed_marker(m) for m in metadata)
 
         if has_streamed and inner_type is str:
             return "StreamableValues[str]"
