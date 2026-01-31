@@ -43,8 +43,9 @@ dev = [
 [tool.ruff]
 # Ruff configuration example
 line-length = 88
-select = ["E", "F", "I"] # Errors, Fixes, Import sorting
+select = ["E", "F", "I"]          # Errors, Fixes, Import sorting
 ignore = []
+exclude = ["src/jmux/generated/"]
 
 # Or only in test files:
 [tool.ruff.per-file-ignores]
