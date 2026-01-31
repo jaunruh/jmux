@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from jmux.generator import find_streamable_models, generate_jmux_code
@@ -19,25 +20,28 @@ def main() -> None:
     )
     gen_parser.add_argument(
         "--root",
-        default=".",
+        type=Path,
+        default=Path("."),
         help="Root directory to scan for StreamableBaseModel subclasses",
     )
-    gen_parser.set_defaults(func=generate_command)
 
     args = parser.parse_args()
+    command: str | None = args.command
 
-    if args.command is None:
+    if command is None:
         parser.print_help()
-        return
+        sys.exit(1)
 
-    args.func(args)
+    if command == "generate":
+        root: Path = args.root
+        generate_command(root)
 
 
-def generate_command(args: argparse.Namespace) -> None:
-    root = Path(args.root).resolve()
-    print(f"Scanning for StreamableBaseModel subclasses in: {root}")
+def generate_command(root: Path) -> None:
+    resolved_root = root.resolve()
+    print(f"Scanning for StreamableBaseModel subclasses in: {resolved_root}")
 
-    models = find_streamable_models(root)
+    models = find_streamable_models(resolved_root)
 
     if not models:
         print("No StreamableBaseModel subclasses found.")

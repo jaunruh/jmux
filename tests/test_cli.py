@@ -66,5 +66,5 @@ def test_cli_no_command():
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0
+    assert result.returncode == 1
     assert "usage:" in result.stdout.lower() or "jmux" in result.stdout

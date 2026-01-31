@@ -81,3 +81,6 @@ Thumbs.db
 
 # Cursor
 .cursor/
+
+# Generated files
+src/jmux/generated/
