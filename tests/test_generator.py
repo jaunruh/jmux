@@ -1,6 +1,6 @@
 from enum import Enum
 from textwrap import dedent
-from typing import Annotated
+from typing import Annotated, Optional, Union
 
 import pytest
 
@@ -65,6 +65,8 @@ class ListNestedModel(StreamableBaseModel):
         (list[int], "StreamableValues[int]"),
         (Status, "AwaitableValue[Status]"),
         (str | None, "AwaitableValue[str | None]"),
+        (Union[str, None], "AwaitableValue[str | None]"),
+        (Optional[str], "AwaitableValue[str | None]"),
         (NestedInnerModel, "AwaitableValue[NestedInnerModelJMux]"),
         (list[NestedInnerModel], "StreamableValues[NestedInnerModelJMux]"),
     ],

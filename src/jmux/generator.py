@@ -5,8 +5,8 @@ import importlib.util
 import sys
 from enum import Enum
 from pathlib import Path
-from types import ModuleType, NoneType
-from typing import Annotated, Any, get_args, get_origin, get_type_hints
+from types import ModuleType, NoneType, UnionType
+from typing import Annotated, Any, Union, get_args, get_origin, get_type_hints
 
 from pydantic import BaseModel
 
@@ -351,7 +351,7 @@ def get_jmux_type(annotation: Any) -> str:
         return f"AwaitableValue[{annotation.__name__}]"
 
     type_origin = get_origin(annotation)
-    if type_origin is type(None | str):
+    if type_origin is UnionType or type_origin is Union:
         non_none_args = [a for a in args if a is not NoneType and a is not None]
         if len(non_none_args) == 1:
             inner = _get_inner_type_str(non_none_args[0])
