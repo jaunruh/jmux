@@ -17,6 +17,9 @@ authors = [{ name = "Johannes A.I. Unruh", email = "johannes@unruh.ai" }]
 dependencies = ["anyio>=4.0.0", "pydantic>=2.0.0"]
 keywords = ["demultiplexer", "python", "package", "json"]
 
+[project.scripts]
+jmux = "jmux.cli:main"
+
 [tool.setuptools_scm]
 
 [project.urls]
