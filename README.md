@@ -11,6 +11,7 @@ This package is inspired by `Snapshot Streaming` mentioned in the [`WWDC25: Meet
 - **Asynchronous by Design**: Built on top of `anyio`, JMux supports both `asyncio` and `trio` backends, making it perfect for modern, high-performance Python applications.
 - **Python 3.10+**: Supports Python 3.10 and newer versions.
 - **Pydantic Integration**: Validate your `JMux` classes against Pydantic models to ensure type safety and consistency.
+- **Code Generation**: Automatically generate JMux classes from `StreamableBaseModel` subclasses using the `jmux generate` CLI command.
 - **Awaitable and Streamable Sinks**: Use `AwaitableValue` for single values and `StreamableValues` for streams of values.
 - **Robust Error Handling**: JMux provides a comprehensive set of exceptions to handle parsing errors and other issues.
 - **Lightweight**: JMux has only a few external dependencies, making it easy to integrate into any project.
@@ -23,11 +24,145 @@ You can install JMux from PyPI using pip:
 pip install jmux
 ```
 
+## Code Generation
+
+JMux provides a CLI tool to automatically generate JMux classes from Pydantic models. Instead of manually writing both a Pydantic model and a corresponding JMux class, you can define your models using `StreamableBaseModel` and let JMux generate the demultiplexer classes for you.
+
+### Defining Models with StreamableBaseModel
+
+Use `StreamableBaseModel` as your base class instead of `pydantic.BaseModel`:
+
+```python
+from typing import Annotated
+from jmux import StreamableBaseModel, Streamed
+
+class LlmResponse(StreamableBaseModel):
+    thought: str
+    tool_code: Annotated[str, Streamed]
+    tags: list[str]
+```
+
+### Type Mappings
+
+The generator converts your model fields to JMux types as follows:
+
+| Model Field Type              | Generated JMux Type               |
+| ----------------------------- | --------------------------------- |
+| `str`, `int`, `float`, `bool` | `AwaitableValue[T]`               |
+| `Enum`                        | `AwaitableValue[EnumType]`        |
+| `T \| None`                   | `AwaitableValue[T \| None]`       |
+| `list[T]`                     | `StreamableValues[T]`             |
+| `Annotated[str, Streamed]`    | `StreamableValues[str]`           |
+| Nested `StreamableBaseModel`  | `AwaitableValue[NestedModelJMux]` |
+
+The `Streamed` marker is useful when you want to stream a string field character-by-character (e.g., for real-time display of LLM output) rather than awaiting the complete value.
+
+### Using the CLI
+
+Run the `jmux generate` command to scan your codebase and generate JMux classes:
+
+```bash
+jmux generate --root <directory>
+```
+
+This will:
+
+1. Recursively scan `<directory>` for Python files containing `StreamableBaseModel` subclasses
+2. Generate corresponding JMux classes with the suffix `JMux` (e.g., `LlmResponse` → `LlmResponseJMux`)
+3. Write the generated code to `src/jmux/generated/__init__.py`
+
+### Example
+
+Given this model:
+
+```python
+from typing import Annotated
+from jmux import StreamableBaseModel, Streamed
+
+class LlmResponse(StreamableBaseModel):
+    thought: str
+    tool_code: Annotated[str, Streamed]
+```
+
+Running `jmux generate` produces:
+
+```python
+from jmux.awaitable import AwaitableValue, StreamableValues
+from jmux.demux import JMux
+
+class LlmResponseJMux(JMux):
+    thought: AwaitableValue[str]
+    tool_code: StreamableValues[str]
+```
+
+You can then import and use the generated class:
+
+```python
+from jmux.generated import LlmResponseJMux
+
+jmux_instance = LlmResponseJMux()
+```
+
 ## Usage with LLMs (e.g., `litellm`)
 
 The primary use case for `jmux` is to process streaming JSON responses from LLMs. This allows you to react to parts of the data as it arrives, rather than waiting for the entire JSON object to be transmitted. While this should be obvious, I should mention, that **the order in which the pydantic model defines the properties, defines which stream is filled first**.
 
-Here’s a conceptual example of how you might integrate `jmux` with an LLM call, such as one made with `litellm`:
+### Using Code Generation (Recommended)
+
+The easiest way to use JMux with LLMs is to define your models using `StreamableBaseModel` and generate JMux classes automatically:
+
+```python
+from typing import Annotated
+from jmux import StreamableBaseModel, Streamed
+
+class LlmResponse(StreamableBaseModel): # Use `StreamableBaseModel` so that the CLI can find the `pydantic` models to parse
+    thought: str
+    tool_code: Annotated[str, Streamed]
+```
+
+Then run `jmux generate --root .` to generate the `LlmResponseJMux` class. You can then use it directly:
+
+```python
+import anyio
+from jmux.generated import LlmResponseJMux
+
+async def mock_llm_stream():
+    json_stream = '{"thought": "I need to write some code.", "tool_code": "print(\'Hello, World!\')"}'
+    for char in json_stream:
+        yield char
+        await anyio.sleep(0.01)
+
+async def process_llm_response():
+    jmux_instance = LlmResponseJMux()
+
+    async def feed_stream():
+        async for chunk in mock_llm_stream():
+            await jmux_instance.feed_chunks(chunk)
+
+    async def consume_thought():
+        thought = await jmux_instance.thought
+        print(f"LLM's thought received: '{thought}'")
+
+    async def consume_tool_code():
+        print("Receiving tool code...")
+        full_code = ""
+        async for code_fragment in jmux_instance.tool_code:
+            full_code += code_fragment
+            print(f"  -> Received fragment: {code_fragment}")
+        print(f"Full tool code received: {full_code}")
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(feed_stream)
+        tg.start_soon(consume_thought)
+        tg.start_soon(consume_tool_code)
+
+if __name__ == "__main__":
+    anyio.run(process_llm_response, backend="asyncio")
+```
+
+### Manual Approach
+
+If you prefer more control, you can manually define both the Pydantic model and the JMux class:
 
 ```python
 import anyio
@@ -37,7 +172,7 @@ from jmux import JMux, AwaitableValue, StreamableValues
 # from litellm import acompletion
 
 # 1. Define the Pydantic model for the expected JSON response
-class LlmResponse(BaseModel):
+class LlmResponse(BaseModel): # No need to use `StreamableBaseModel` here, since it is only used for detection purposes
     thought: str # **This property is filled first**
     tool_code: str
 
@@ -300,6 +435,32 @@ Additionally the following type is supported without being wrapped into `list`:
 - `str`
 
 This allows you to fully stream strings directly to a sink.
+
+### Class `jmux.StreamableBaseModel`
+
+A Pydantic `BaseModel` subclass used for defining models that can be automatically converted to JMux classes via the `jmux generate` CLI command.
+
+```python
+from jmux import StreamableBaseModel
+
+class MyModel(StreamableBaseModel):
+    name: str
+    age: int
+```
+
+### Class `jmux.Streamed`
+
+A marker class used with `typing.Annotated` to indicate that a string field should be streamed character-by-character rather than awaited as a complete value.
+
+```python
+from typing import Annotated
+from jmux import StreamableBaseModel, Streamed
+
+class MyModel(StreamableBaseModel):
+    content: Annotated[str, Streamed]
+```
+
+When generating JMux classes, fields annotated with `Streamed` will be converted to `StreamableValues[str]` instead of `AwaitableValue[str]`.
 
 ## License
 
