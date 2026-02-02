@@ -17,6 +17,9 @@ authors = [{ name = "Johannes A.I. Unruh", email = "johannes@unruh.ai" }]
 dependencies = ["anyio>=4.0.0", "pydantic>=2.0.0"]
 keywords = ["demultiplexer", "python", "package", "json"]
 
+[project.scripts]
+jmux = "jmux.cli:main"
+
 [tool.setuptools_scm]
 
 [project.urls]
@@ -40,8 +43,9 @@ dev = [
 [tool.ruff]
 # Ruff configuration example
 line-length = 88
-select = ["E", "F", "I"] # Errors, Fixes, Import sorting
+select = ["E", "F", "I"]          # Errors, Fixes, Import sorting
 ignore = []
+exclude = ["src/jmux/generated/"]
 
 # Or only in test files:
 [tool.ruff.per-file-ignores]
