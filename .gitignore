@@ -79,5 +79,12 @@ Thumbs.db
 .env
 .env.*
 
+# Generated files
+src/jmux/generated/
+
 # Cursor
 .cursor/
+
+# Claude Code
+.claude/
+CLAUDE.md

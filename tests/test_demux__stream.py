@@ -1,12 +1,17 @@
-import asyncio
 import json
 import os
-from asyncio import gather, wait_for
+import sys
 from enum import Enum
 from types import NoneType
 from typing import List, Optional, Type
 
+import anyio
 import pytest
+
+if sys.version_info >= (3, 11):
+    from builtins import BaseExceptionGroup
+else:
+    from exceptiongroup import BaseExceptionGroup
 
 from jmux.awaitable import AwaitableValue, StreamableValues
 from jmux.demux import JMux
@@ -27,7 +32,7 @@ class AsyncStreamGenerator:
     async def __aiter__(self):
         for char in self.stream:
             yield char
-            await asyncio.sleep(0)
+            await anyio.sleep(0)
 
 
 LOG_EMITS = os.environ.get("LOG_EMITS", "0") == "1"
@@ -258,13 +263,12 @@ async def test_json_demux__simple_json(stream: str, expected_operations: List[st
             await s_city.feed_char(ch)
             # Yield control to allow other tasks to run
             # Necessary in the tests only, for API calls this is not needed
-            await asyncio.sleep(0)
+            await anyio.sleep(0)
 
-    await gather(
-        produce(),
-        consume_city(),
-        consume_country(),
-    )
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(produce)
+        tg.start_soon(consume_city)
+        tg.start_soon(consume_country)
 
     parsed_json = json.loads(stream)
 
@@ -362,12 +366,11 @@ async def test_json_demux__utf8(stream: str, expected_operations: List[str]):
             await s_emoji.feed_char(ch)
             # Yield control to allow other tasks to run
             # Necessary in the tests only, for API calls this is not needed
-            await asyncio.sleep(0)
+            await anyio.sleep(0)
 
-    await gather(
-        produce(),
-        consume_emojis(),
-    )
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(produce)
+        tg.start_soon(consume_emojis)
 
     parsed_json = json.loads(stream)
 
@@ -559,17 +562,16 @@ async def test_json_demux__primitives(stream: str, expected_operations: List[str
             await s_primitives.feed_char(ch)
             # Yield control to allow other tasks to run
             # Necessary in the tests only, for API calls this is not needed
-            await asyncio.sleep(0)
+            await anyio.sleep(0)
 
-    await gather(
-        produce(),
-        consume_str(),
-        consume_int(),
-        consume_float(),
-        consume_bool(),
-        consume_enum(),
-        consume_none(),
-    )
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(produce)
+        tg.start_soon(consume_str)
+        tg.start_soon(consume_int)
+        tg.start_soon(consume_float)
+        tg.start_soon(consume_bool)
+        tg.start_soon(consume_enum)
+        tg.start_soon(consume_none)
 
     parsed_json = json.loads(stream)
 
@@ -704,33 +706,29 @@ async def test_json_demux__primitives__partial_streams(
             await s_primitives.feed_char(ch)
             # Yield control to allow other tasks to run
             # Necessary in the tests only, for API calls this is not needed
-            await asyncio.sleep(0)
+            await anyio.sleep(0)
 
     if MaybeExpectedError:
-        with pytest.raises(MaybeExpectedError):
-            await wait_for(
-                fut=gather(
-                    produce(),
-                    consume_str(),
-                    consume_int(),
-                    consume_float(),
-                    consume_bool(),
-                    consume_none(),
-                ),
-                timeout=5,
-            )
+        with pytest.raises((MaybeExpectedError, BaseExceptionGroup)) as exc_info:
+            with anyio.fail_after(5):
+                async with anyio.create_task_group() as tg:
+                    tg.start_soon(produce)
+                    tg.start_soon(consume_str)
+                    tg.start_soon(consume_int)
+                    tg.start_soon(consume_float)
+                    tg.start_soon(consume_bool)
+                    tg.start_soon(consume_none)
+        if isinstance(exc_info.value, BaseExceptionGroup):
+            assert exc_info.group_contains(MaybeExpectedError)
     else:
-        await wait_for(
-            fut=gather(
-                produce(),
-                consume_str(),
-                consume_int(),
-                consume_float(),
-                consume_bool(),
-                consume_none(),
-            ),
-            timeout=5,
-        )
+        with anyio.fail_after(5):
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(produce)
+                tg.start_soon(consume_str)
+                tg.start_soon(consume_int)
+                tg.start_soon(consume_float)
+                tg.start_soon(consume_bool)
+                tg.start_soon(consume_none)
         parsed_json = json.loads(stream)
 
         assert my_str == parsed_json.get("key_str", None)
@@ -821,12 +819,11 @@ async def test_json_demux__nested(stream: str, expected_operations: List[str]):
             await s_parent.feed_char(ch)
             # Yield control to allow other tasks to run
             # Necessary in the tests only, for API calls this is not needed
-            await asyncio.sleep(0)
+            await anyio.sleep(0)
 
-    await gather(
-        produce(),
-        consume_nested(),
-    )
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(produce)
+        tg.start_soon(consume_nested)
 
     parsed_json = json.loads(stream)
     assert nested is not None
@@ -918,7 +915,6 @@ async def test_json_demux__object_with_array_of_objects(
             operation_list.append(op)
 
             key_value = await element.key
-            await asyncio.sleep(0)
             child.append(key_value)
             op = f"[child] received: {key_value}"
             log_emit(op)
@@ -932,12 +928,11 @@ async def test_json_demux__object_with_array_of_objects(
             await s_parent.feed_char(ch)
             # Yield control to allow other tasks to run
             # Necessary in the tests only, for API calls this is not needed
-            await asyncio.sleep(0)
+            await anyio.sleep(0)
 
-    await gather(
-        produce(),
-        consume_nested(),
-    )
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(produce)
+        tg.start_soon(consume_nested)
 
     parsed_json = json.loads(stream)
     assert arr is not None
@@ -1109,15 +1104,14 @@ async def test_json_demux__object_with_array_of_primitives(
             await s_parent.feed_char(ch)
             # Yield control to allow other tasks to run
             # Necessary in the tests only, for API calls this is not needed
-            await asyncio.sleep(0)
+            await anyio.sleep(0)
 
-    await gather(
-        produce(),
-        consume_int_arr(),
-        consume_float_arr(),
-        consume_bool_arr(),
-        consume_str_arr(),
-    )
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(produce)
+        tg.start_soon(consume_int_arr)
+        tg.start_soon(consume_float_arr)
+        tg.start_soon(consume_bool_arr)
+        tg.start_soon(consume_str_arr)
 
     parsed_json = json.loads(stream)
     assert len(arr_int) == 2
